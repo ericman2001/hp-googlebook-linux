@@ -289,7 +289,7 @@ class FastbootTcp:
         self._send(f'getvar:{name}'.encode())
         while True:
             msg = self._recv()
-            kind, rest = msg[:4], msg[4:].decode(errors='replace').strip()
+            kind, rest = msg[:4], msg[4:].decode(errors='replace').strip(' \t\r\n\0')
             if kind == b'OKAY':
                 return rest
             if kind != b'INFO':
