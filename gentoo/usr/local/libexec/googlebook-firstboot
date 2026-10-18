@@ -1,0 +1,59 @@
+#!/bin/sh
+# One-time setup on the first boot of a system made by googlebook-installer:
+# things that need the laptop itself.
+set -eu
+
+partdev() {	# the block device of the NVMe partition with GPT name $1
+	for u in /sys/class/block/nvme0n1p*/uevent; do
+		grep -qx "PARTNAME=$1" "$u" && { echo "/dev/$(basename "$(dirname "$u")")"; return; }
+	done
+	return 1
+}
+
+# The locale chosen in the installer is listed in /etc/locale.gen
+locale-gen
+
+# The ADSP (charging, battery, audio) firmware is signed for this laptop
+# model and isn't redistributable: copy it from the stock modem_a partition
+# if the installer didn't, and start the ADSP with it
+fw=/lib/firmware/qcom/x1e80100/google/quartz
+if [ ! -e "$fw/adsp.mdt" ] && dev=$(partdev modem_a); then
+	mnt=$(mktemp -d)
+	mount -o ro -t vfat "$dev" "$mnt"
+	mkdir -p "$fw"
+	cp "$mnt"/image/adsp* "$mnt"/image/cdsp* "$mnt"/image/*.jsn "$fw"/
+	[ -d "$mnt/image/kiwi" ] && cp -r "$mnt/image/kiwi" "$fw"/
+	umount "$mnt"
+	rmdir "$mnt"
+	cat > "$fw/README" <<-EOT
+		Device-specific firmware for the HP Googlebook (Quartz), copied on first
+		boot from this laptop's modem_a partition (image/). Not owned by any package.
+	EOT
+	for r in /sys/class/remoteproc/remoteproc*; do
+		grep -q adsp "$r/name" 2>/dev/null || continue
+		[ "$(cat "$r/state")" = running ] || echo start > "$r/state" || true
+	done
+fi
+
+# Back up the partitions that are unique to this laptop (calibration data,
+# MAC addresses, keys). They are never written; this is for safekeeping.
+# A partition that can't be read is retried on the next boot.
+backup=/var/lib/googlebook/stock
+mkdir -p "$backup"
+chmod 700 "$backup"
+ok=1
+for p in persist keymaster_a frp_persist desktop_security_persist modem_a \
+	vbmeta_a dtbo_a bluetooth_a dsp_a; do
+	[ -e "$backup/$p.img" ] && continue
+	dev=$(partdev "$p") || continue
+	if ! dd if="$dev" of="$backup/$p.img.part" bs=1M status=none; then
+		echo "googlebook-firstboot: could not back up $p" >&2
+		rm -f "$backup/$p.img.part"
+		ok=0
+		continue
+	fi
+	mv "$backup/$p.img.part" "$backup/$p.img"
+done
+(cd "$backup" && sha256sum ./*.img > SHA256SUMS) 2> /dev/null || true
+
+[ "$ok" = 1 ] && date > /var/lib/googlebook/firstboot-done

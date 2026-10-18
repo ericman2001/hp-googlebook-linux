@@ -10,6 +10,18 @@ tree on slot B and leaves slot A (stock) alone, so the stock system stays one
 Everything here was brought up on Linux 7.2.11 and a Gentoo arm64 stage3, but
 the kernel patches are generic and should help any distribution.
 
+## Install
+
+From another Linux PC, with a USB Ethernet adapter for the laptop:
+
+    tools/googlebook-installer
+
+It walks you through unlocking the laptop and starting fastboot, then builds
+and flashes a working Gentoo system: kernel, firmware, your user, wired
+networking and SSH. On the laptop, `googlebook-postinstall --gnome` adds
+the desktop. Nothing large is in this repository; the installer downloads
+the Gentoo stage3 and the kernel itself. See [docs/INSTALL.md](docs/INSTALL.md).
+
 ## Status
 
 | Hardware | Status | Notes |
@@ -49,14 +61,15 @@ the kernel patches are generic and should help any distribution.
   that flashes new kernels to slot B, NetworkManager and audio settings,
   and a small Portage overlay with libfprint for the fingerprint reader. See
   [gentoo/README.md](gentoo/README.md).
-* `tools/`: host-side tools. They build the boot images, flash slot B, extract
-  stock firmware and partitions, and handle kexec testing.
+* `tools/`: host-side tools. `googlebook-installer` does a complete install;
+  the others build the boot images, flash slot B, extract stock firmware and
+  partitions, and handle kexec testing.
 * `initramfs/`: the busybox rescue initramfs. It switches to the root
   filesystem, or gives a rescue shell (optionally over the network).
 * `config/`: kernel config fragments for a host-built kernel.
 * `docs/`: [installation](docs/INSTALL.md), [firmware](docs/FIRMWARE.md),
-  [hardware notes and pitfalls](docs/HARDWARE.md) and the
-  [suspend investigation](docs/SUSPEND.md).
+  [hardware notes and pitfalls](docs/HARDWARE.md), the
+  [suspend investigation](docs/SUSPEND.md) and the [to-do list](docs/TODO.md).
 
 Not in this repository, because they are device-specific or not
 redistributable:

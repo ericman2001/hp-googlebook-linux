@@ -36,6 +36,13 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
 * `etc/systemd/sleep.conf.d/googlebook.conf`: suspend to idle (s2idle), the
   only working sleep mode, and no hibernation. See
   [docs/SUSPEND.md](../docs/SUSPEND.md).
+* `usr/local/sbin/googlebook-postinstall`, `etc/systemd/system/googlebook-firstboot.service`
+  and `usr/local/libexec/googlebook-firstboot`: used by
+  `tools/googlebook-installer`. The first-boot service generates the locale,
+  copies the DSP firmware from `modem_a` if it's missing, and backs up the
+  laptop's unique partitions to `/var/lib/googlebook/stock/`.
+  `googlebook-postinstall [--gnome]` then adds the Portage tree, sudo,
+  NetworkManager, linux-firmware, the Gentoo kernel and optionally GNOME.
 * `etc/systemd/system/googlebook-ec-log.service` and
   `usr/local/libexec/googlebook-ec-log`: save the Chrome EC console log at
   boot to `/var/log/ec/` (for suspend debugging, see

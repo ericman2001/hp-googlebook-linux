@@ -1,17 +1,22 @@
 #!/bin/sh
 # Build the boot, init_boot, vendor_boot and dtbo images for the Googlebook
 # from the kernel build in src/build-arm64. Output goes to out/.
+#
+# KSRC, KBUILD and OUT override the kernel source, kernel build and output
+# directories; VBMETA the stock vbmeta image (default stock/vbmeta_a.img).
 set -eu
 
 top=$(cd "$(dirname "$0")/.." && pwd)
-src=$top/src/linux-7.2.11
-build=$top/src/build-arm64
-out=$top/out
+src=${KSRC:-$top/src/linux-7.2.11}
+build=${KBUILD:-$top/src/build-arm64}
+out=${OUT:-$top/out}
+vbmeta=${VBMETA:-$top/stock/vbmeta_a.img}
 dtb=$build/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dtb
 
 # root=LABEL=gentoo: the rescue init switch_roots into the installed system
-# (any key within 3 s, or gbrescue, keeps the rescue shell)
-cmdline="console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused ${LOGLEVEL:-loglevel=7} rdinit=/init root=LABEL=gentoo"
+# (any key within 3 s, or gbrescue, keeps the rescue shell).
+# mem_sleep_default=s2idle: deep sleep has no resume path in this firmware.
+cmdline="console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused ${LOGLEVEL:-loglevel=7} rdinit=/init mem_sleep_default=s2idle root=LABEL=gentoo"
 # GBNET_TELNET=1 adds gbnet.telnet=1: the rescue shell also listens on telnet
 # with NO password. Only for bring-up on a trusted, firewalled network.
 [ "${GBNET_TELNET:-0}" = 1 ] && cmdline="$cmdline gbnet.telnet=1"
@@ -51,7 +56,7 @@ $py dtbo --base "$dtb" --overlay "$out/placeholder.dtbo" -o "$out/dtbo.img"
 
 # Stock vbmeta with the HASHTREE_DISABLED | VERIFICATION_DISABLED flags set,
 # i.e. what fastboot --disable-verity --disable-verification would flash
-python3 -I - "$top/stock/vbmeta_a.img" "$out/vbmeta.img" <<'EOF'
+python3 -I - "$vbmeta" "$out/vbmeta.img" <<'EOF'
 import struct, sys
 d = open(sys.argv[1], 'rb').read()
 assert d[:4] == b'AVB0', 'not a vbmeta image'

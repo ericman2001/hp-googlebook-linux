@@ -1,0 +1,77 @@
+#!/bin/bash
+# Finish a Gentoo install made by googlebook-installer, on the laptop itself.
+#
+# usage: googlebook-postinstall [--gnome]
+#
+# The installer leaves a minimal system: the stage3, a kernel built on the
+# installing PC, wired networking and SSH. This adds, with Portage:
+#   * the Portage tree (emerge-webrsync)
+#   * sudo for the wheel group, NetworkManager (Wi-Fi), linux-firmware,
+#     wireless-regdb and alsa-ucm-conf
+#   * sys-kernel/gentoo-kernel with the Googlebook patches; its install hook
+#     flashes slot B, so the next boot runs it
+#   * with --gnome: the GNOME desktop profile, GNOME, GDM and fprintd
+#
+# Gentoo's binary packages are used where they exist, but the kernel always
+# builds from source (about 20 minutes). Keep the laptop on its charger.
+set -euo pipefail
+
+gnome=0
+for a in "$@"; do
+	case $a in
+	--gnome) gnome=1 ;;
+	-h | --help) sed -n '2,/^set -e/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+	*) echo "unknown option: $a" >&2; exit 1 ;;
+	esac
+done
+[ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
+
+step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+
+step "Checking the network"
+if ! getent hosts distfiles.gentoo.org > /dev/null; then
+	echo "No network. Plug in the USB Ethernet adapter and try again." >&2
+	exit 1
+fi
+
+if [ ! -d /var/db/repos/gentoo/profiles ]; then
+	step "Fetching the Portage tree"
+	emerge-webrsync
+fi
+
+step "Installing sudo, NetworkManager, firmware and audio profiles"
+emerge --noreplace app-admin/sudo net-misc/networkmanager \
+	sys-kernel/linux-firmware net-wireless/wireless-regdb media-libs/alsa-ucm-conf
+echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel
+chmod 440 /etc/sudoers.d/wheel
+
+step "Switching from systemd-networkd to NetworkManager"
+systemctl enable NetworkManager.service
+systemctl disable systemd-networkd.service systemd-networkd.socket 2> /dev/null || true
+echo "NetworkManager takes over at the next boot. Connect to Wi-Fi with nmtui."
+
+step "Building the Gentoo kernel with the Googlebook patches"
+if ! emerge --pretend --quiet sys-kernel/gentoo-kernel > /dev/null 2>&1; then
+	cat >&2 <<'EOF'
+sys-kernel/gentoo-kernel can't be installed as configured. The patches are
+made for 7.2.11 (see /etc/portage/package.accept_keywords/kernel); if
+Gentoo no longer has that version, pick one that is in the tree, keyword it
+there, and check that the patches in /etc/portage/patches still apply.
+EOF
+	exit 1
+fi
+emerge sys-kernel/gentoo-kernel
+
+if [ "$gnome" = 1 ]; then
+	step "Switching to the GNOME profile and installing GNOME"
+	eselect profile set default/linux/arm64/23.0/desktop/gnome/systemd
+	emerge --update --deep --newuse @world
+	emerge --noreplace gnome-base/gnome gnome-base/gdm sys-auth/fprintd
+	systemctl enable gdm.service bluetooth.service
+fi
+
+step "Done"
+cat <<'EOF'
+Reboot to start the new kernel. If it misbehaves, the installer's kernel is
+one command away: googlebook-install-kernel --rollback
+EOF

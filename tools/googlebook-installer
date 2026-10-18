@@ -1,0 +1,1180 @@
+#!/usr/bin/env python3
+"""Install Gentoo on an HP Googlebook (Quartz) from another Linux PC.
+
+usage: tools/googlebook-installer [--from PHASE] [--only PHASE] [--ip ADDR]
+
+Run it from a checkout of this repository, as a normal user (it asks for
+sudo once, to assemble the root filesystem). It walks you through unlocking
+the laptop and starting its fastboot mode, then:
+
+  check     checks the tools this PC needs
+  settings  asks for a hostname, user, passwords, time zone and locale
+  device    connects to the laptop's fastboot over Ethernet
+  stock     optionally reads vbmeta_a and the DSP firmware (modem_a) from
+            HP's recovery USB drive or image
+  download  fetches the Gentoo stage3, the kernel source and the firmware
+            files, and checks them against known checksums
+  kernel    builds Linux with the Googlebook patches
+  images    builds the boot images (kernel, rescue initramfs, DTB, vbmeta)
+  rootfs    unpacks the stage3, adds the kernel modules, firmware and
+            configuration, and makes an ext4 image of it (needs sudo)
+  flash     writes the boot images to slot B and the root filesystem to
+            userdata, and boots it
+  finish    waits for the new system to come up on the network
+
+Progress is kept in work/state.json, so running it again resumes where it
+stopped. --from PHASE redoes PHASE and everything after it; --only PHASE
+runs just that phase.
+
+Nothing is written to the laptop before the flash phase, which asks first.
+Only slot B and userdata are written; slot A keeps stock Android.
+"""
+
+import argparse
+import getpass
+import hashlib
+import json
+import os
+import re
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+TOP = Path(__file__).resolve().parent.parent
+WORK = TOP / 'work'
+DL = TOP / 'downloads'
+STATE = WORK / 'state.json'
+LOGS = WORK / 'logs'
+
+PHASES = ['check', 'settings', 'device', 'stock', 'download', 'kernel',
+          'images', 'rootfs', 'flash', 'finish']
+
+KVER = '7.2.11'
+KERNEL_URL = f'https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-{KVER}.tar.xz'
+KERNEL_SHA256 = 'fd0fc479f983a8c05313f13e9c36330fe6651cf725396748c40d5cd93fa1e6a4'
+
+STAGE3_BASE = 'https://distfiles.gentoo.org/releases/arm64/autobuilds'
+STAGE3_LATEST = f'{STAGE3_BASE}/latest-stage3-arm64-desktop-systemd.txt'
+GENTOO_KEYS = 'https://qa-reports.gentoo.org/output/service-keys.gpg'
+
+# Generic firmware from linux-firmware, pinned to a tag and checked
+LFW_TAG = '20260622'
+LFW_URL = ('https://git.kernel.org/pub/scm/linux/kernel/git/firmware/'
+           'linux-firmware.git/plain/{}?h=' + LFW_TAG)
+LFW_FILES = {
+    'ath12k/WCN7850/hw2.0/amss.bin': '43aadfd3df887f27de74020273aee484bac6a31dd53068f91baf2a9b094d6a68',
+    'ath12k/WCN7850/hw2.0/m3.bin': '0e72f44df7defc269fe92dcea25d4d409046c04b77d41c510c52879b3dfc1055',
+    'ath12k/WCN7850/hw2.0/board-2.bin': '1abee7132dbccb523cca44a8de4e8968aa7bf5a5fcc032c338f687f94ea5bf4e',
+    'ath12k/WCN7850/hw2.0/Notice.txt': '515bf4c9d620a87458e4447fe01a0e9bc384d1c3e0037cc4c3d2037b1ff25525',
+    'qca/hmtbtfw20.tlv': 'f1c00f4640a5c4e5dc36a2574d3d1d0afcfd1ab58a84f217dce4b1bb73cba981',
+    'qca/hmtnv20.b112': 'f8d027c5f0ea54456d23b903c55e1a87b06df97ff26b83e3fd02ac6b265b5264',
+    'qcom/gen70500_gmu.bin': '5dfba247d548cabcb892ffa716e8dc82a345fd54b5dbae46ba523230e7ae37dd',
+    'qcom/gen70500_sqe.fw': '05ae89e6dea62268cec3f4abb5d7d6db2c95270ff105fd056f77262e39d2e527',
+    'qcom/x1e80100/X1E80100-CRD-tplg.bin': 'e9c74273a3b01bfed3ae53ed80694c35c9b24faed367e31b595b9fb1b95eadee',
+}
+# The HP Wi-Fi card has no board-2.bin entry; other board-0x112 cards share
+# its calibration (docs/FIRMWARE.md)
+WIFI_BOARD_ID = ('bus=pci,vendor=17cb,device=1107,subsystem-vendor=17aa,'
+                 'subsystem-device=e0e9,qmi-chip-id=2,qmi-board-id=255')
+WIFI_BOARD_SHA256 = 'd4f92e9f11bc530d7287f346b96ad3f7e56e6ad6c12f2a0977b267a0ee274a6a'
+
+# Optionally read from HP's recovery image. Without it the installer makes
+# its own vbmeta, and the laptop copies the DSP firmware from its own
+# modem_a on first boot.
+STOCK_PARTS = ['vbmeta_a', 'modem_a']
+BOOT_IMAGES = ['boot', 'init_boot', 'vendor_boot', 'dtbo', 'vbmeta']
+
+HOST_TOOLS = {
+    'fastboot': 'android-tools',
+    'img2simg': 'android-tools (or simg2img/android-sdk-libsparse-utils)',
+    'clang': 'clang (LLVM)',
+    'ld.lld': 'lld',
+    'llvm-ar': 'llvm',
+    'llvm-objcopy': 'llvm',
+    'llvm-strip': 'llvm',
+    'make': 'make',
+    'flex': 'flex',
+    'bison': 'bison',
+    'bc': 'bc',
+    'perl': 'perl',
+    'dtc': 'dtc (device-tree-compiler)',
+    'lz4': 'lz4',
+    'curl': 'curl',
+    'tar': 'tar',
+    'xz': 'xz',
+    'patch': 'patch',
+    'mke2fs': 'e2fsprogs',
+    'depmod': 'kmod',
+    'openssl': 'openssl',
+    'sudo': 'sudo',
+}
+
+
+# --- terminal ---------------------------------------------------------------
+
+BOLD = '\033[1m' if sys.stdout.isatty() else ''
+RED = '\033[31m' if sys.stdout.isatty() else ''
+OFF = '\033[0m' if sys.stdout.isatty() else ''
+
+
+def heading(text):
+    print(f'\n{BOLD}== {text}{OFF}')
+
+
+def say(text=''):
+    print(text)
+
+
+def warn(text):
+    print(f'{RED}{BOLD}!!{OFF} {text}')
+
+
+class Abort(Exception):
+    pass
+
+
+def ask(prompt, default=None):
+    suffix = f' [{default}]' if default else ''
+    while True:
+        try:
+            reply = input(f'{prompt}{suffix}: ').strip()
+        except EOFError:
+            raise Abort('no input')
+        if reply:
+            return reply
+        if default is not None:
+            return default
+
+
+def ask_yes(prompt, default=True):
+    reply = ask(prompt + (' (Y/n)' if default else ' (y/N)'), '').lower()
+    return default if not reply else reply.startswith('y')
+
+
+def pause(prompt='Press Enter when done'):
+    try:
+        input(f'{prompt}... ')
+    except EOFError:
+        raise Abort('no input')
+
+
+def ask_password(who):
+    while True:
+        a = getpass.getpass(f'Password for {who}: ')
+        if len(a) < 6:
+            say('Use at least 6 characters.')
+            continue
+        if getpass.getpass('Again: ') == a:
+            return a
+        say("They don't match. Try again.")
+
+
+# --- helpers ----------------------------------------------------------------
+
+def run(cmd, log=None, cwd=None, env=None, check=True, quiet=False):
+    """Run a command. With log, its output goes to work/logs/<log>.log and
+    the end of it is shown if it fails."""
+    full_env = dict(os.environ, **(env or {}))
+    if log is None:
+        r = subprocess.run(cmd, cwd=cwd, env=full_env,
+                           stdout=subprocess.DEVNULL if quiet else None)
+    else:
+        LOGS.mkdir(parents=True, exist_ok=True)
+        path = LOGS / f'{log}.log'
+        with open(path, 'a') as f:
+            f.write(f'\n$ {" ".join(map(str, cmd))}\n')
+            f.flush()
+            r = subprocess.run(cmd, cwd=cwd, env=full_env, stdout=f,
+                               stderr=subprocess.STDOUT)
+    if check and r.returncode != 0:
+        if log is not None:
+            lines = (LOGS / f'{log}.log').read_text(errors='replace').splitlines()
+            say('\n'.join(lines[-30:]))
+            raise Abort(f'{cmd[0]} failed (full log: {LOGS / (log + ".log")})')
+        raise Abort(f'{" ".join(map(str, cmd))} failed')
+    return r.returncode
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def download(url, dest, want_sha256=None):
+    dest = Path(dest)
+    if dest.exists() and (want_sha256 is None or sha256(dest) == want_sha256):
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + '.part')
+    say(f'  downloading {url}')
+    resume = ['-C', '-'] if tmp.exists() else []
+    run(['curl', '-fL', '--retry', '3', '--progress-bar', *resume, '-o', str(tmp), url])
+    if want_sha256 and sha256(tmp) != want_sha256:
+        tmp.unlink()
+        raise Abort(f'{dest.name}: checksum mismatch, download removed')
+    tmp.rename(dest)
+    return dest
+
+
+def fetch_text(url):
+    with urllib.request.urlopen(url, timeout=60) as r:
+        return r.read().decode()
+
+
+class State:
+    def __init__(self):
+        self.data = json.loads(STATE.read_text()) if STATE.exists() else {}
+        self.data.setdefault('done', [])
+        self.data.setdefault('settings', {})
+
+    def save(self):
+        WORK.mkdir(parents=True, exist_ok=True)
+        tmp = STATE.with_suffix('.tmp')
+        tmp.write_text(json.dumps(self.data, indent=1))
+        os.chmod(tmp, 0o600)
+        tmp.rename(STATE)
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+        self.save()
+
+
+# --- fastboot ---------------------------------------------------------------
+
+class FastbootTcp:
+    """Depthcharge's fastboot over TCP: 'FB01' handshake, then messages
+    with an 8-byte big-endian length. Used for getvar; flashing goes
+    through the fastboot tool."""
+
+    def __init__(self, ip, timeout=30):
+        self.s = socket.create_connection((ip, 5554), timeout=timeout)
+        self.s.sendall(b'FB01')
+        hello = self._recv_exact(4)
+        if hello[:2] != b'FB':
+            raise Abort(f'unexpected fastboot handshake {hello!r}')
+
+    def _recv_exact(self, n):
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = self.s.recv(n - len(buf))
+            if not chunk:
+                raise Abort('fastboot connection closed')
+            buf += chunk
+        return bytes(buf)
+
+    def _send(self, data):
+        self.s.sendall(struct.pack('>Q', len(data)) + data)
+
+    def _recv(self):
+        n, = struct.unpack('>Q', self._recv_exact(8))
+        return self._recv_exact(n)
+
+    def getvar(self, name):
+        self._send(f'getvar:{name}'.encode())
+        while True:
+            msg = self._recv()
+            kind, rest = msg[:4], msg[4:].decode(errors='replace').strip()
+            if kind == b'OKAY':
+                return rest
+            if kind != b'INFO':
+                raise Abort(f'fastboot getvar {name}: {kind.decode()} {rest}')
+
+    def close(self):
+        self.s.close()
+
+
+def fastboot(ip, *args):
+    """Run the fastboot tool, with its progress on the terminal."""
+    return run(['fastboot', '-s', f'tcp:{ip}', *args])
+
+
+def getvar(ip, name, timeout=30):
+    fb = FastbootTcp(ip, timeout)
+    try:
+        return fb.getvar(name)
+    finally:
+        fb.close()
+
+
+def wait_for_fastboot(ip, tries=1):
+    for i in range(tries):
+        try:
+            return getvar(ip, 'product', timeout=5)
+        except (OSError, Abort):
+            if i + 1 < tries:
+                time.sleep(3)
+    return None
+
+
+# --- phases -----------------------------------------------------------------
+
+def phase_check(st):
+    heading('Checking this PC')
+    if os.geteuid() == 0:
+        raise Abort('run this as a normal user; it asks for sudo when needed')
+    missing = [t for t in HOST_TOOLS if not shutil.which(t)
+               and not Path('/sbin', t).exists() and not Path('/usr/sbin', t).exists()]
+    if missing:
+        say('Missing tools (and the package that usually provides them):')
+        for t in missing:
+            say(f'  {t:14} {HOST_TOOLS[t]}')
+        raise Abort('install them and run the installer again')
+    targets = subprocess.run(['clang', '--print-targets'], capture_output=True,
+                             text=True).stdout
+    if 'aarch64' not in targets:
+        raise Abort('clang has no AArch64 target; install a full LLVM/clang')
+    if not shutil.which('gpg'):
+        warn('gpg not found: the stage3 is checked by SHA-256 over HTTPS only')
+    free = shutil.disk_usage(TOP).free >> 30
+    if free < 30:
+        raise Abort(f'{TOP} has {free} GiB free; the build needs about 30 GiB')
+    say(f'All tools found; {free} GiB free in {TOP}.')
+    say('You also need: a USB Ethernet adapter (or a USB-C hub with Ethernet)\n'
+        'for the laptop, on the same wired network as this PC, with DHCP.')
+
+
+def guess_timezone():
+    try:
+        link = os.readlink('/etc/localtime')
+        return link.split('zoneinfo/', 1)[1]
+    except (OSError, IndexError):
+        return 'UTC'
+
+
+def phase_settings(st):
+    heading('Settings for the new system')
+    s = {}
+    s['hostname'] = ask('Hostname', 'googlebook')
+    while True:
+        s['user'] = ask('Your user name')
+        if re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', s['user']) and s['user'] != 'root':
+            break
+        say('Use lowercase letters, digits, - and _.')
+    s['fullname'] = ask('Your full name (optional)', '')
+    pw = ask_password(s['user'])
+    root_pw = pw if ask_yes('Use the same password for root?') else ask_password('root')
+    s['user_hash'] = openssl_hash(pw)
+    s['root_hash'] = openssl_hash(root_pw)
+    while True:
+        s['timezone'] = ask('Time zone', guess_timezone())
+        if Path('/usr/share/zoneinfo', s['timezone']).is_file() or \
+                not Path('/usr/share/zoneinfo').is_dir():
+            break
+        say('Unknown time zone (try e.g. America/Chicago or Europe/Berlin).')
+    s['locale'] = ask('Locale', 'en_US.UTF-8')
+    s['keymap'] = ask('Console keymap', 'us')
+    keys = sorted(Path.home().glob('.ssh/id_*.pub'))
+    s['ssh_key'] = ''
+    if keys and ask_yes(f'Allow SSH logins with your key {keys[0]}?'):
+        s['ssh_key'] = keys[0].read_text().strip()
+    st['settings'] = s
+
+
+def openssl_hash(password):
+    r = subprocess.run(['openssl', 'passwd', '-6', '-stdin'], input=password,
+                       capture_output=True, text=True, check=True)
+    return r.stdout.strip()
+
+
+UNLOCK_STEPS = """
+Unlocking ERASES everything on the laptop. Skip this if you've already
+unlocked it (in that case "Bootloader fastboot" shows up in step 3 below).
+
+ 1. Shut the laptop down.
+ 2. Hold Esc and F2, press Power, and let go when the screen lights up.
+    This is the recovery screen.
+ 3. Use the arrow keys and Enter: "Advanced options" -> "Unlock bootloader"
+    -> "Unlock".
+ 4. The laptop erases itself and restarts. Let it finish. You don't need to
+    set up the system it starts.
+"""
+
+FASTBOOT_STEPS = """
+Now start the laptop's fastboot mode:
+
+ 1. Plug the USB Ethernet adapter into the laptop and into your network.
+ 2. Shut the laptop down, then hold Esc + F2 and press Power again.
+ 3. Choose "Advanced options" -> "Bootloader fastboot".
+ 4. The screen says "You're in bootloader fastboot mode" and shows an IP
+    address once the network is up.
+"""
+
+
+def phase_device(st):
+    heading('Unlocking and fastboot')
+    ip = st.get('ip')
+    if ip and wait_for_fastboot(ip):
+        say(f'The laptop is in fastboot at {ip}.')
+    else:
+        if not st.get('unlocked_once'):
+            say(UNLOCK_STEPS)
+            pause('Press Enter when the laptop is unlocked')
+            st['unlocked_once'] = True
+        say(FASTBOOT_STEPS)
+        while True:
+            ip = ask('IP address shown on the laptop', ip)
+            say(f'  connecting to {ip}...')
+            if wait_for_fastboot(ip, tries=10):
+                break
+            warn(f'no fastboot at {ip}. Check the cable and the address.')
+    product = getvar(ip, 'product')
+    if product.lower() != 'quartz':
+        raise Abort(f'this is a "{product}", not an HP Googlebook (Quartz)')
+    serial = getvar(ip, 'serialno')
+    say(f'Found an HP Googlebook (Quartz), serial {serial}, firmware '
+        f'{getvar(ip, "version-bootloader")}.')
+    if st.get('serial') and st['serial'] != serial:
+        raise Abort(f'this is a different laptop than before ({st["serial"]}); '
+                    f'move {WORK} away to start over')
+    st['ip'] = ip
+    st['serial'] = serial
+
+
+def stock_dir(st):
+    return TOP / 'stock' / st['serial']
+
+
+def gpt_partitions(f):
+    """{name: (offset, size)} from a disk or disk image's GPT."""
+    for sector in (512, 4096):
+        f.seek(sector)
+        hdr = f.read(92)
+        if hdr[:8] == b'EFI PART':
+            break
+    else:
+        raise Abort('no GPT found')
+    lba, count, esize = struct.unpack_from('<QII', hdr, 72)
+    f.seek(lba * sector)
+    table = f.read(count * esize)
+    parts = {}
+    for i in range(count):
+        e = table[i * esize:(i + 1) * esize]
+        first, last = struct.unpack_from('<QQ', e, 32)
+        name = e[56:128].decode('utf-16-le', 'replace').split('\0', 1)[0]
+        if first and name:
+            parts[name] = (first * sector, (last - first + 1) * sector)
+    return parts
+
+
+STOCK_HELP = """
+If you have HP's recovery USB drive (or an image of it), the installer can
+take the stock vbmeta and the DSP firmware from it. That's optional: without
+it, the installer makes its own vbmeta, and the laptop copies its DSP
+firmware from its own modem_a partition on first boot.
+"""
+
+
+def phase_stock(st):
+    heading('Stock files (optional)')
+    d = stock_dir(st)
+    if all((d / f'{p}.img').exists() for p in STOCK_PARTS):
+        say(f'Using the stock files in {d}.')
+        return
+    say(STOCK_HELP)
+    src = ask('Recovery drive (e.g. /dev/sdb) or image file, or Enter to skip', '')
+    if not src:
+        say('Skipped: the installer makes its own vbmeta.')
+        return
+    src = Path(src).expanduser()
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+    try:
+        f = open(src, 'rb')
+    except PermissionError:
+        say(f'  {src} needs root to read; using sudo to copy it')
+        f = None
+    if f is None:
+        with tempfile.NamedTemporaryFile(dir=d) as t:
+            run(['sudo', 'dd', f'if={src}', f'of={t.name}', 'bs=1M', 'count=1'],
+                log='stock')
+            parts = gpt_partitions(open(t.name, 'rb'))
+        for p in STOCK_PARTS:
+            if p not in parts:
+                raise Abort(f'{src} has no {p} partition: is it the Googlebook recovery drive?')
+            off, size = parts[p]
+            run(['sudo', 'dd', f'if={src}', f'of={d / p}.img', 'bs=4096',
+                 f'skip={off // 4096}', f'count={size // 4096}'], log='stock')
+            run(['sudo', 'chown', f'{os.getuid()}:{os.getgid()}', f'{d / p}.img'], log='stock')
+    else:
+        with f:
+            parts = gpt_partitions(f)
+            for p in STOCK_PARTS:
+                if p not in parts:
+                    raise Abort(f'{src} has no {p} partition: is it the Googlebook recovery drive?')
+                off, size = parts[p]
+                f.seek(off)
+                with open(d / f'{p}.img', 'wb') as out:
+                    left = size
+                    while left:
+                        block = f.read(min(left, 1 << 20))
+                        out.write(block)
+                        left -= len(block)
+    with open(d / 'vbmeta_a.img', 'rb') as f:
+        if f.read(4) != b'AVB0':
+            raise Abort('vbmeta_a is not a vbmeta image')
+    Fat(d / 'modem_a.img').listdir('image')
+    say(f'  vbmeta_a and modem_a copied to {d}')
+
+
+def generated_vbmeta(path):
+    """A vbmeta image with no signature and no descriptors, flagged
+    HASHTREE_DISABLED | VERIFICATION_DISABLED. On an unlocked laptop libavb
+    then loads the boot partitions without checking them, the same path the
+    stock vbmeta takes once those flags are set."""
+    hdr = bytearray(256)
+    hdr[0:4] = b'AVB0'
+    struct.pack_into('>II', hdr, 4, 1, 0)        # required libavb version 1.0
+    struct.pack_into('>I', hdr, 120, 3)          # flags
+    hdr[128:128 + 22] = b'googlebook-installer 1'
+    Path(path).write_bytes(bytes(hdr) + bytes(4096 - 256))
+
+
+def stage3_path(st):
+    return Path(st['stage3'])
+
+
+def phase_download(st):
+    heading('Downloads')
+    have = st.get('stage3')
+    if not (have and Path(have).exists()):
+        local = ask('Path to a stage3-arm64-desktop-systemd-*.tar.xz you already '
+                    'have (Enter to download the latest)', '')
+        if local:
+            p = Path(local).expanduser().resolve()
+            if not p.is_file() or not re.match(r'stage3-arm64-desktop-systemd-.*\.tar\.xz$', p.name):
+                raise Abort(f'{p} is not a stage3-arm64-desktop-systemd tarball')
+            have = str(p)
+        else:
+            have = str(download_stage3())
+        st['stage3'] = have
+    say(f'  stage3: {have}')
+    k = download(KERNEL_URL, DL / f'linux-{KVER}.tar.xz', KERNEL_SHA256)
+    say(f'  kernel: {k}')
+    for name, digest in LFW_FILES.items():
+        download(LFW_URL.format(name), DL / 'linux-firmware' / name, digest)
+    say(f'  linux-firmware {LFW_TAG}: {len(LFW_FILES)} files')
+
+
+def download_stage3():
+    latest = fetch_text(STAGE3_LATEST)
+    m = re.search(r'^(\S+/(stage3-arm64-desktop-systemd-\S+\.tar\.xz)) \d+$',
+                  latest, re.M)
+    if not m:
+        raise Abort('could not find the latest stage3 in ' + STAGE3_LATEST)
+    url = f'{STAGE3_BASE}/{m.group(1)}'
+    sums = fetch_text(url + '.sha256')
+    if shutil.which('gpg'):
+        verify_gentoo_signature(sums)
+    digest = re.search(r'^([0-9a-f]{64})  ' + re.escape(m.group(2)) + '$', sums, re.M)
+    if not digest:
+        raise Abort('no SHA-256 for ' + m.group(2))
+    return download(url, DL / m.group(2), digest.group(1))
+
+
+def verify_gentoo_signature(text):
+    with tempfile.TemporaryDirectory() as home:
+        keys = Path(home) / 'keys.gpg'
+        download(GENTOO_KEYS, keys)
+        env = {'GNUPGHOME': home}
+        run(['gpg', '--batch', '--quiet', '--import', str(keys)], log='gpg', env=env)
+        msg = Path(home) / 'sums.asc'
+        msg.write_text(text)
+        run(['gpg', '--batch', '--verify', str(msg)], log='gpg', env=env)
+    say('  stage3 checksum signature: good (Gentoo release key)')
+
+
+def ksrc():
+    return WORK / f'linux-{KVER}'
+
+
+def kbuild():
+    return WORK / 'build-arm64'
+
+
+def kmake(*targets, log='kernel'):
+    run(['make', '-C', str(ksrc()), f'O={kbuild()}', 'ARCH=arm64', 'LLVM=1',
+         f'-j{os.cpu_count()}', *targets], log=log)
+
+
+def phase_kernel(st):
+    heading(f'Building Linux {KVER} (this takes a while)')
+    src = ksrc()
+    if not (src / '.googlebook-patched').exists():
+        if src.exists():
+            shutil.rmtree(src)
+        say('  unpacking and patching')
+        run(['tar', '-C', str(WORK), '-xJf', str(DL / f'linux-{KVER}.tar.xz')], log='kernel')
+        patches = sorted((TOP / 'gentoo/etc/portage/patches/sys-kernel/gentoo-kernel').glob('*.patch'))
+        for p in patches:
+            run(['patch', '-p1', '-s', '-N', '-i', str(p)], log='kernel', cwd=src)
+        (src / '.googlebook-patched').write_text(f'{len(patches)} patches\n')
+    say('  configuring: arm64 defconfig + config/quartz.config + the dist-kernel fragment')
+    kbuild().mkdir(parents=True, exist_ok=True)
+    run([str(src / 'scripts/kconfig/merge_config.sh'), '-O', str(kbuild()), '-m',
+         str(src / 'arch/arm64/configs/defconfig'), str(TOP / 'config/quartz.config'),
+         str(TOP / 'gentoo/etc/kernel/config.d/50-googlebook-quartz.config')],
+        log='kernel', cwd=src, env={'ARCH': 'arm64', 'LLVM': '1'})
+    kmake('olddefconfig')
+    say(f'  compiling with {os.cpu_count()} jobs (log: {LOGS / "kernel.log"})')
+    kmake('Image.lz4', 'modules', 'qcom/x1e80100-google-quartz.dtb')
+    mods = WORK / 'modules'
+    if mods.exists():
+        shutil.rmtree(mods)
+    kmake(f'INSTALL_MOD_PATH={mods}', 'INSTALL_MOD_STRIP=1', 'modules_install')
+    rel = subprocess.run(['make', '-s', '-C', str(src), f'O={kbuild()}', 'ARCH=arm64',
+                          'LLVM=1', 'kernelrelease'], capture_output=True, text=True,
+                         check=True).stdout.strip().splitlines()[-1]
+    st['kernelrelease'] = rel
+    say(f'  built {rel}')
+
+
+def phase_images(st):
+    heading('Building the boot images')
+    if not (TOP / 'src/busybox-1.38.0/busybox').exists() or \
+            not (TOP / 'src/kexec-tools-2.0.32/build/sbin/kexec').exists():
+        say('  rescue initramfs tools: sysroot from the stage3, static busybox and kexec')
+        run(['sh', str(TOP / 'tools/build-deps.sh'), str(stage3_path(st))], log='images')
+    out = WORK / 'out'
+    vbmeta = stock_dir(st) / 'vbmeta_a.img'
+    if not vbmeta.exists():
+        vbmeta = WORK / 'vbmeta-generated.img'
+        generated_vbmeta(vbmeta)
+        say('  vbmeta: generated (no stock vbmeta given)')
+    run(['sh', str(TOP / 'tools/build-images.sh')], log='images', env={
+        'KSRC': str(ksrc()), 'KBUILD': str(kbuild()), 'OUT': str(out),
+        'VBMETA': str(vbmeta)})
+    board = WORK / 'board.bin'
+    run(['python3', '-I', str(TOP / 'gentoo/usr/local/lib/googlebook/ath12k-board2.py'),
+         str(DL / 'linux-firmware/ath12k/WCN7850/hw2.0/board-2.bin'), WIFI_BOARD_ID,
+         str(board)], log='images')
+    if sha256(board) != WIFI_BOARD_SHA256:
+        raise Abort('the extracted Wi-Fi board file is not the expected one')
+    for p in BOOT_IMAGES:
+        size = (out / f'{p}.img').stat().st_size
+        say(f'  {p}.img: ' + (f'{size >> 10} KiB' if size >= 1 << 10 else f'{size} bytes'))
+
+
+def phase_rootfs(st):
+    heading('Building the root filesystem')
+    plan = {
+        'top': str(TOP), 'work': str(WORK), 'stage3': st['stage3'],
+        'kernelrelease': st['kernelrelease'], 'stock': str(stock_dir(st)),
+        'settings': st['settings'], 'uid': os.getuid(), 'gid': os.getgid(),
+    }
+    planfile = WORK / 'rootfs-plan.json'
+    planfile.write_text(json.dumps(plan))
+    os.chmod(planfile, 0o600)
+    say('This step unpacks the stage3 as root, so that file owners are right.')
+    say('sudo may ask for your password.')
+    r = subprocess.run(['sudo', sys.executable, '-I', str(Path(__file__).resolve()),
+                        '--root-helper', str(planfile)])
+    planfile.unlink(missing_ok=True)
+    if r.returncode:
+        raise Abort(f'building the root filesystem failed (log: {LOGS / "rootfs.log"})')
+    img = WORK / 'rootfs.img'
+    say('  converting to a sparse image for fastboot')
+    run(['img2simg', str(img), str(WORK / 'rootfs.simg')], log='rootfs')
+    img.unlink()
+    say(f'  rootfs.simg: {(WORK / "rootfs.simg").stat().st_size >> 20} MiB to send')
+
+
+FLASH_WARNING = """
+This writes to the laptop:
+  * boot_b, init_boot_b, vendor_boot_b, dtbo_b and vbmeta_b: the Gentoo
+    kernel and boot images (slot B)
+  * userdata: the Gentoo root filesystem. Everything on it is LOST,
+    including any Android data or an earlier Gentoo install.
+Slot A (stock Android) is not touched. The laptop then boots slot B.
+"""
+
+
+def phase_flash(st):
+    heading('Flashing the laptop')
+    ip = st['ip']
+    if not wait_for_fastboot(ip):
+        say(FASTBOOT_STEPS)
+        ip = ask('IP address shown on the laptop', ip)
+        if not wait_for_fastboot(ip, tries=10):
+            raise Abort(f'no fastboot at {ip}')
+        st['ip'] = ip
+    if getvar(ip, 'serialno') != st['serial']:
+        raise Abort('this is a different laptop than the one this install was set up for')
+    simg = WORK / 'rootfs.simg'
+    fs_size = sparse_image_size(simg)
+    part = int(getvar(ip, 'partition-size:userdata'), 16)
+    if fs_size > part:
+        raise Abort(f'the root filesystem ({fs_size >> 30} GiB) is bigger than userdata')
+    say(FLASH_WARNING)
+    if ask('Type ERASE to go ahead', '') != 'ERASE':
+        raise Abort('not flashed')
+    out = WORK / 'out'
+    for p in BOOT_IMAGES:
+        fastboot(ip, 'flash', f'{p}_b', str(out / f'{p}.img'))
+    say(f'  userdata: {simg.stat().st_size >> 20} MiB, a few minutes')
+    fastboot(ip, 'flash', 'userdata', str(simg))
+    fastboot(ip, 'set_active', 'b')
+    say('  rebooting into Gentoo')
+    fastboot(ip, 'reboot')
+
+
+def sparse_image_size(path):
+    """The size of the filesystem in an Android sparse image."""
+    with open(path, 'rb') as f:
+        magic, _, _, _, _, blk, total = struct.unpack('<IHHHHII', f.read(20))
+    if magic != 0xed26ff3a:
+        raise Abort(f'{path} is not a sparse image')
+    return blk * total
+
+
+def phase_finish(st):
+    heading('First boot')
+    s = st['settings']
+    ip = st['ip']
+    say('The laptop shows the developer-mode screen, then boots Gentoo. On the\n'
+        'first boot the root filesystem grows to fill the disk.')
+    say(f'Waiting for SSH at {ip} (the address usually stays the same)...')
+    up = False
+    for _ in range(60):
+        try:
+            socket.create_connection((ip, 22), timeout=3).close()
+            up = True
+            break
+        except OSError:
+            time.sleep(5)
+    if up:
+        say(f'It is up: ssh {s["user"]}@{ip}')
+    else:
+        say('No answer yet. Log in on the laptop itself; `ip addr` shows its address.')
+    say(f"""
+Log in as {s['user']} or root. Then, as root (su -), finish the setup:
+
+    googlebook-postinstall           # Portage tree, NetworkManager, firmware,
+                                     # and the Gentoo kernel (about 30 minutes)
+    googlebook-postinstall --gnome   # the same, plus the GNOME desktop
+
+Keep the laptop on its charger while it builds.
+
+On first boot the laptop also backs up its unique partitions (persist,
+keymaster, ...) to /var/lib/googlebook/stock/. Copy them somewhere safe:
+persist holds this laptop's calibration data and MAC addresses.""")
+
+
+# --- root part of the rootfs phase -------------------------------------------
+
+def root_helper(planfile):
+    plan = json.loads(Path(planfile).read_text())
+    global LOGS
+    LOGS = Path(plan['work']) / 'logs'
+    try:
+        build_rootfs(plan)
+    except Abort as e:
+        warn(str(e))
+        return 1
+    finally:
+        if (LOGS / 'rootfs.log').exists():
+            os.chown(LOGS / 'rootfs.log', plan['uid'], plan['gid'])
+    return 0
+
+
+def build_rootfs(plan):
+    top, work = Path(plan['top']), Path(plan['work'])
+    s = plan['settings']
+    root = work / 'rootfs'
+    if root.exists():
+        assert root.name == 'rootfs' and root.parent == work
+        run(['rm', '-rf', '--one-file-system', str(root)], log='rootfs')
+    root.mkdir(mode=0o755)
+
+    def path(p):
+        """A path inside the new root. The stage3 is merged-/usr, so /lib
+        and friends are symlinks; resolve them here rather than letting the
+        host follow them."""
+        parts = Path(p).relative_to('/').parts
+        if parts and parts[0] in ('lib', 'lib64', 'bin', 'sbin'):
+            parts = ('usr', 'bin' if parts[0] in ('bin', 'sbin') else parts[0]) + parts[1:]
+        return root.joinpath(*parts)
+
+    def write(p, text, mode=0o644):
+        f = path(p)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text)
+        os.chmod(f, mode)
+        os.chown(f, 0, 0)
+
+    def edit(p, fn):
+        f = path(p)
+        f.write_text(fn(f.read_text()))
+
+    say('  unpacking the stage3')
+    # /dev is left empty: systemd mounts a devtmpfs there at boot
+    run(['tar', '-C', str(root), '-xpJf', plan['stage3'], '--numeric-owner',
+         '--xattrs', '--xattrs-include=*', '--exclude=./dev/*'], log='rootfs')
+
+    say('  kernel modules, firmware and Googlebook files')
+    rel = plan['kernelrelease']
+    mods = path('/lib/modules')
+    mods.mkdir(parents=True, exist_ok=True)
+    run(['cp', '-a', str(work / 'modules/lib/modules' / rel), str(mods)], log='rootfs')
+    run(['chown', '-R', '0:0', str(mods / rel)], log='rootfs')
+    # Links to the kernel tree on this PC
+    for link in ('build', 'source'):
+        if (mods / rel / link).is_symlink():
+            (mods / rel / link).unlink()
+
+    fw = path('/lib/firmware')
+    for name in LFW_FILES:
+        dest = fw / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(top / 'downloads/linux-firmware' / name, dest)
+    upd = fw / 'updates/ath12k/WCN7850/hw2.0'
+    upd.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(work / 'board.bin', upd / 'board.bin')
+    (upd / 'README').write_text(
+        'board.bin: the linux-firmware board-2.bin entry for board ID 0x112\n'
+        '(shared by the other board-0x112 cards), since HP\'s subsystem ID\n'
+        '103c:8e64 has no entry. See docs/FIRMWARE.md in hp-googlebook-linux.\n')
+    modem = Path(plan['stock']) / 'modem_a.img'
+    if modem.exists():
+        copy_device_firmware(modem, fw / 'qcom/x1e80100/google/quartz', work)
+    else:
+        say('  device firmware: copied from the laptop\'s modem_a on first boot')
+
+    copy_tree(top / 'gentoo', root, path)
+    share = path('/usr/local/share/googlebook')
+    share.mkdir(parents=True, exist_ok=True)
+    for f in ['rescue.cpio', 'vendor.cpio', 'placeholder.dtbo', 'vbmeta.img']:
+        shutil.copyfile(work / 'out' / f, share / f)
+    lib = path('/var/lib/googlebook')
+    lib.mkdir(parents=True, exist_ok=True)
+    (lib / 'kernel').write_text(rel + '\n')
+
+    say('  configuration')
+    write('/etc/hostname', s['hostname'] + '\n')
+    write('/etc/fstab', '# <fs>\t\t<mountpoint>\t<type>\t<opts>\t\t\t\t<dump> <pass>\n'
+          'LABEL=gentoo\t/\t\text4\tdefaults,noatime,x-systemd.growfs\t0 1\n')
+    tz = path('/etc/localtime')
+    tz.unlink(missing_ok=True)
+    os.symlink(f'../usr/share/zoneinfo/{s["timezone"]}', tz)
+    charset = s['locale'].split('.', 1)[1] if '.' in s['locale'] else 'UTF-8'
+    edit('/etc/locale.gen', lambda t: t + f'\n{s["locale"]} {charset}\n')
+    write('/etc/locale.conf', f'LANG={s["locale"]}\n')
+    write('/etc/vconsole.conf', f'KEYMAP={s["keymap"]}\n')
+    path('/etc/resolv.conf').unlink(missing_ok=True)
+    os.symlink('../run/systemd/resolve/stub-resolv.conf', path('/etc/resolv.conf'))
+    write('/etc/systemd/network/50-wired.network',
+          '# Wired networking until googlebook-postinstall installs NetworkManager\n'
+          '[Match]\nType=ether\n\n[Network]\nDHCP=yes\n\n[DHCPv4]\nClientIdentifier=mac\n')
+    write('/etc/motd', '\nFinish the setup as root: googlebook-postinstall [--gnome]\n\n')
+
+    add_users(path, s)
+
+    with open(path('/etc/portage/make.conf'), 'a') as f:
+        f.write(f"""
+# Added by googlebook-installer
+MAKEOPTS="-j12 -l12"
+# Gentoo binary packages, signature-checked (see /etc/portage/binrepos.conf)
+FEATURES="${{FEATURES}} getbinpkg binpkg-request-signature"
+# linux-firmware needs @BINARY-REDISTRIBUTABLE
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+VIDEO_CARDS="freedreno"
+""")
+    write('/etc/portage/package.use/kernel',
+          'sys-kernel/gentoo-kernel -initramfs -debug\nsys-kernel/installkernel -dracut\n')
+    write('/etc/portage/package.accept_keywords/kernel',
+          f'=sys-kernel/gentoo-kernel-{KVER} ~arm64\n=virtual/dist-kernel-{KVER} ~arm64\n')
+
+    for unit, target in [('systemd-networkd.service', 'multi-user.target'),
+                         ('systemd-networkd.socket', 'sockets.target'),
+                         ('systemd-resolved.service', 'multi-user.target'),
+                         ('sshd.service', 'multi-user.target')]:
+        enable(path, f'/usr/lib/systemd/system/{unit}', target)
+    enable(path, '/etc/systemd/system/googlebook-firstboot.service', 'multi-user.target')
+
+    img = work / 'rootfs.img'
+    used = int(subprocess.run(['du', '-sxB1', str(root)], capture_output=True,
+                              text=True, check=True).stdout.split()[0])
+    size = max(8 << 30, (used * 13 // 10 + (2 << 30)) // (1 << 30) * (1 << 30))
+    say(f'  making a {size >> 30} GiB ext4 image ({used >> 20} MiB used); '
+        'it grows to the whole disk on first boot')
+    if img.exists():
+        img.unlink()
+    run(['truncate', '-s', str(size), str(img)], log='rootfs')
+    run(['mke2fs', '-q', '-t', 'ext4', '-L', 'gentoo', '-d', str(root), str(img)],
+        log='rootfs')
+    os.chown(img, plan['uid'], plan['gid'])
+    run(['rm', '-rf', '--one-file-system', str(root)], log='rootfs')
+
+
+class Fat:
+    """Just enough of a FAT12/16/32 reader to copy files out of an image,
+    without mounting it."""
+
+    def __init__(self, path):
+        self.f = open(path, 'rb')
+        b = self.f.read(512)
+        self.bps, = struct.unpack_from('<H', b, 11)
+        self.spc = b[13]
+        rsvd, = struct.unpack_from('<H', b, 14)
+        nfats = b[16]
+        rootents, tot16, = struct.unpack_from('<HH', b, 17)
+        fatsz, = struct.unpack_from('<H', b, 22)
+        tot32, fatsz32, _, _, self.rootclus = struct.unpack_from('<IIHHI', b, 32)
+        fatsz = fatsz or fatsz32
+        total = tot16 or tot32
+        self.fat_off = rsvd * self.bps
+        self.root_off = (rsvd + nfats * fatsz) * self.bps
+        self.root_len = rootents * 32
+        self.data_off = self.root_off + -(-self.root_len // self.bps) * self.bps
+        clusters = (total * self.bps - self.data_off) // (self.spc * self.bps)
+        self.bits = 12 if clusters < 4085 else 16 if clusters < 65525 else 32
+        self.f.seek(self.fat_off)
+        self.fat = self.f.read(fatsz * self.bps)
+
+    def _next(self, c):
+        if self.bits == 16:
+            return struct.unpack_from('<H', self.fat, c * 2)[0]
+        if self.bits == 32:
+            return struct.unpack_from('<I', self.fat, c * 4)[0] & 0x0fffffff
+        v, = struct.unpack_from('<H', self.fat, c * 3 // 2)
+        return v >> 4 if c & 1 else v & 0xfff
+
+    def _chain(self, c):
+        end = {12: 0xff8, 16: 0xfff8, 32: 0x0ffffff8}[self.bits]
+        size = self.spc * self.bps
+        while 2 <= c < end:
+            self.f.seek(self.data_off + (c - 2) * size)
+            yield self.f.read(size)
+            c = self._next(c)
+
+    def _entries(self, raw):
+        lfn = {}
+        for i in range(0, len(raw) - 31, 32):
+            e = raw[i:i + 32]
+            if e[0] == 0:
+                break
+            if e[0] == 0xe5:
+                lfn = {}
+                continue
+            if e[11] == 0x0f:
+                part = (e[1:11] + e[14:26] + e[28:32]).decode('utf-16-le', 'replace')
+                lfn[e[0] & 0x1f] = part.split('\0', 1)[0]
+                continue
+            if e[11] & 0x08:
+                lfn = {}
+                continue
+            if lfn:
+                name = ''.join(lfn[k] for k in sorted(lfn))
+            else:
+                base = e[0:8].decode('latin-1').rstrip()
+                ext = e[8:11].decode('latin-1').rstrip()
+                base = base.lower() if e[12] & 0x08 else base
+                ext = ext.lower() if e[12] & 0x10 else ext
+                name = base + ('.' + ext if ext else '')
+            lfn = {}
+            hi, = struct.unpack_from('<H', e, 20)
+            lo, size = struct.unpack_from('<HI', e, 26)
+            yield name, bool(e[11] & 0x10), hi << 16 | lo, size
+
+    def listdir(self, path):
+        if self.bits == 32:
+            raw = b''.join(self._chain(self.rootclus))
+        else:
+            self.f.seek(self.root_off)
+            raw = self.f.read(self.root_len)
+        entries = list(self._entries(raw))
+        for comp in [c for c in path.split('/') if c]:
+            match = [e for e in entries if e[0].lower() == comp.lower() and e[1]]
+            if not match:
+                raise FileNotFoundError(path)
+            entries = list(self._entries(b''.join(self._chain(match[0][2]))))
+        return {e[0]: e for e in entries if e[0] not in ('.', '..')}
+
+    def copy(self, entry, dest):
+        _, _, cluster, size = entry
+        with open(dest, 'wb') as out:
+            for block in self._chain(cluster):
+                out.write(block[:size])
+                size -= len(block)
+                if size <= 0:
+                    break
+
+
+def copy_device_firmware(modem, dest, work):
+    """The ADSP/CDSP firmware is signed for this laptop model; it lives in
+    the modem_a partition (FAT) under image/."""
+    dest.mkdir(parents=True, exist_ok=True)
+    fat = Fat(modem)
+    image = fat.listdir('image')
+    names = sorted(n for n in image if not image[n][1] and
+                   re.match(r'(adsp|cdsp).*\.(mdt|b\d\d)$|.*\.jsn$', n))
+    if 'adsp.mdt' not in names:
+        raise Abort('modem_a has no image/adsp.mdt')
+    for n in names:
+        fat.copy(image[n], dest / n)
+    if 'kiwi' in image:
+        (dest / 'kiwi').mkdir(exist_ok=True)
+        for n, e in fat.listdir('image/kiwi').items():
+            if not e[1]:
+                fat.copy(e, dest / 'kiwi' / n)
+    (dest / 'README').write_text(
+        'Device-specific firmware for the HP Googlebook (Quartz), copied by\n'
+        'googlebook-installer from this laptop\'s modem_a partition (image/).\n'
+        'Not owned by any package.\n')
+    say(f'  device firmware: {len(names)} files from modem_a')
+
+
+def copy_tree(src, root, path):
+    """Install the repository's gentoo/ tree, owned by root."""
+    for d, dirs, files in os.walk(src):
+        rel = Path('/') / Path(d).relative_to(src)
+        for name in dirs:
+            p = path(rel / name)
+            if os.path.islink(Path(d) / name):
+                continue
+            p.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            if rel == Path('/') and name == 'README.md':
+                continue
+            s = Path(d) / name
+            dest = path(rel / name)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.is_symlink() or dest.exists():
+                dest.unlink()
+            if s.is_symlink():
+                os.symlink(os.readlink(s), dest)
+                os.lchown(dest, 0, 0)
+                continue
+            shutil.copyfile(s, dest)
+            os.chmod(dest, 0o755 if os.access(s, os.X_OK) else 0o644)
+            os.chown(dest, 0, 0)
+        for name in dirs:
+            s = Path(d) / name
+            if s.is_symlink():
+                dest = path(rel / name)
+                if not dest.exists():
+                    os.symlink(os.readlink(s), dest)
+
+
+def enable(path, unit, target):
+    wants = path(f'/etc/systemd/system/{target}.wants')
+    wants.mkdir(parents=True, exist_ok=True)
+    link = wants / Path(unit).name
+    if not link.is_symlink():
+        os.symlink(unit, link)
+
+
+def add_users(path, s):
+    user, uid = s['user'], 1000
+
+    def shadow_set(text, name, hashed):
+        out = []
+        for line in text.splitlines():
+            f = line.split(':')
+            if f[0] == name:
+                f[1] = hashed
+                f[2] = str(int(time.time() // 86400))
+                line = ':'.join(f)
+            out.append(line)
+        return '\n'.join(out) + '\n'
+
+    passwd = path('/etc/passwd').read_text()
+    if not re.search(rf'^{user}:', passwd, re.M):
+        passwd += f'{user}:x:{uid}:{uid}:{s["fullname"]}:/home/{user}:/bin/bash\n'
+        path('/etc/passwd').write_text(passwd)
+        group = path('/etc/group').read_text()
+        group += f'{user}:x:{uid}:\n'
+        extra = ['wheel', 'audio', 'video', 'input', 'render', 'usb', 'lp', 'users']
+        lines = []
+        for line in group.splitlines():
+            f = line.split(':')
+            if f[0] in extra:
+                members = [m for m in f[3].split(',') if m] + [user]
+                f[3] = ','.join(members)
+                line = ':'.join(f)
+            lines.append(line)
+        path('/etc/group').write_text('\n'.join(lines) + '\n')
+        sh = path('/etc/shadow')
+        sh.write_text(sh.read_text() + f'{user}:!:0:0:99999:7:::\n')
+        gs = path('/etc/gshadow')
+        if gs.exists():
+            gs.write_text(gs.read_text() + f'{user}:!::\n')
+    sh = path('/etc/shadow')
+    t = shadow_set(sh.read_text(), 'root', s['root_hash'])
+    sh.write_text(shadow_set(t, user, s['user_hash']))
+    os.chmod(sh, 0o640)
+
+    home = path(f'/home/{user}')
+    if not home.exists():
+        shutil.copytree(path('/etc/skel'), home, symlinks=True)
+    os.chmod(home, 0o700)
+    if s['ssh_key']:
+        for d in (home / '.ssh', path('/root/.ssh')):
+            d.mkdir(mode=0o700, exist_ok=True)
+            (d / 'authorized_keys').write_text(s['ssh_key'] + '\n')
+            os.chmod(d / 'authorized_keys', 0o600)
+    for d, _, files in os.walk(home):
+        os.chown(d, uid, uid)
+        for f in files:
+            os.lchown(os.path.join(d, f), uid, uid)
+
+
+# --- main --------------------------------------------------------------------
+
+def main():
+    ap = argparse.ArgumentParser(description='Install Gentoo on an HP Googlebook.',
+                                 formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 epilog='Phases: ' + ', '.join(PHASES))
+    ap.add_argument('--from', dest='start', choices=PHASES,
+                    help='redo this phase and the ones after it')
+    ap.add_argument('--only', choices=PHASES, help='run just this phase')
+    ap.add_argument('--ip', help="the laptop's IP address in fastboot mode")
+    ap.add_argument('--root-helper', help=argparse.SUPPRESS)
+    a = ap.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)
+    if a.root_helper:
+        return root_helper(a.root_helper)
+
+    st = State()
+    if a.ip:
+        st['ip'] = a.ip
+    if a.only:
+        todo = [a.only]
+    else:
+        start = PHASES.index(a.start) if a.start else 0
+        todo = [p for i, p in enumerate(PHASES)
+                if i >= start and (a.start or p not in st['done'])]
+        if a.start:
+            st['done'] = [p for p in st['done'] if PHASES.index(p) < start]
+    say(f'{BOLD}Gentoo installer for the HP Googlebook{OFF} (work directory: {WORK})')
+    try:
+        for p in todo:
+            globals()[f'phase_{p}'](st)
+            if p not in st['done']:
+                st['done'] = st['done'] + [p]
+    except Abort as e:
+        warn(str(e))
+        say(f'Run {sys.argv[0]} again to continue from here.')
+        return 1
+    except KeyboardInterrupt:
+        say('\nInterrupted. Run the installer again to continue.')
+        return 130
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

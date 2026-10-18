@@ -1,0 +1,16 @@
+[Unit]
+Description=Googlebook first-boot setup
+Documentation=file:///usr/local/sbin/googlebook-postinstall
+ConditionPathExists=!/var/lib/googlebook/firstboot-done
+# Needs the laptop's own partitions
+ConditionVirtualization=!container
+After=local-fs.target
+Before=systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/googlebook-firstboot
+
+[Install]
+WantedBy=multi-user.target
