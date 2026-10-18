@@ -33,7 +33,8 @@ the kernel patches are generic and should help any distribution.
 | Headphone jack | ✅ | WCD938x; the headset mic is untested (no test hardware) |
 | DP audio | ❓ | Described (DP0/DP1), untested; reports welcome |
 | Suspend | ❌ | The SoC resets when waking from s2idle, and deep has no resume path. See [docs/SUSPEND.md](docs/SUSPEND.md). The system-wide idle state works, which lowers idle power |
-| Webcam, fingerprint | ❓ | Not tried yet |
+| Webcam | ✅ | USB UVC camera ("HP 5MP Camera", 0bda:5637) on the internal USB 2.0 port. MJPEG up to 2880×1800, YUYV up to 640×480 |
+| Fingerprint | ❓ | Not tried yet |
 
 > **Charging needs the ADSP.** Without it (for example in the rescue
 > initramfs, or with older patches) the battery does not charge at all. On a
@@ -72,7 +73,8 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
 1. `spi: geni-qcom`: release a chip select left asserted. This is a generic
    fix: without it, the Chrome EC rejects every command after the first.
 2. The board device tree, `qcom/x1e80100-google-quartz.dtb`, and its later
-   additions: USB 2.0, NVMe, touch, Wi-Fi, Bluetooth, display and GPU.
+   additions: USB 2.0, NVMe, touch, Wi-Fi, Bluetooth, display and GPU,
+   USB-C, audio and the webcam.
 3. `phy: qcom: eusb2-repeater`: reset the repeater on init. This is a generic
    fix for a USB-C port that stays dead when a device was plugged in at boot.
 4. `drm/panel-edp`: leave the enable GPIO alone when the panel is already

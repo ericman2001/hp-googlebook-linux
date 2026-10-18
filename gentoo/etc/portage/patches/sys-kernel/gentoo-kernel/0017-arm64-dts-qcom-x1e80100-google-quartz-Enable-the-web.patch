@@ -1,0 +1,168 @@
+From eaaab76d022f830584c0c496111bdf8e1d84669b Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 10:51:22 -0500
+Subject: [PATCH 17/17] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+ webcam
+
+The webcam is a USB 2.0 UVC camera (Quanta "HP 5MP Camera", Realtek
+0bda:5637) on usb_2, behind an NXP PTN3222 eUSB2 repeater at 0x4b on
+i2c5 (reset on TLMM 10). Its 3.3 V supply is switched by TLMM 206 and is
+always on in the stock DT. Describe all of that as the stock DT does.
+
+Tested: uvcvideo binds, MJPEG capture at 1920x1080 and 2880x1800.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 94 +++++++++++++++++++
+ 1 file changed, 94 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index ad08bc5db..b6ee8ceb2 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -70,6 +70,24 @@ vreg_ts_3p3: regulator-touchscreen {
+ 		regulator-always-on;
+ 	};
+ 
++	/* The USB webcam on usb_2, always on in the stock DT as well */
++	vreg_ucam_3p3: regulator-ucam {
++		compatible = "regulator-fixed";
++
++		regulator-name = "PP3300_UCAM";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 206 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&ucam_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++		regulator-always-on;
++	};
++
+ 	vreg_wcn_3p3: regulator-wcn-3p3 {
+ 		compatible = "regulator-fixed";
+ 
+@@ -601,6 +619,14 @@ vreg_l1b_1p8: ldo1 {
+ 			regulator-always-on;
+ 		};
+ 
++		/* eUSB2 repeater */
++		vreg_l4b_1p8: ldo4 {
++			regulator-name = "vreg_l4b_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
+ 		/* Speaker amplifier I/O */
+ 		vreg_l12b_1p2: ldo12 {
+ 			regulator-name = "vreg_l12b_1p2";
+@@ -610,6 +636,14 @@ vreg_l12b_1p2: ldo12 {
+ 			regulator-always-on;
+ 		};
+ 
++		/* eUSB2 repeater */
++		vreg_l13b_3p0: ldo13 {
++			regulator-name = "vreg_l13b_3p0";
++			regulator-min-microvolt = <3072000>;
++			regulator-max-microvolt = <3072000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
+ 		/* WCN785x I/O and always-on domain, always on in the stock DT */
+ 		vreg_l15b_1p8: ldo15 {
+ 			regulator-name = "vreg_l15b_1p8";
+@@ -629,6 +663,14 @@ regulators-1 {
+ 		compatible = "qcom,pmc8380-rpmh-regulators";
+ 		qcom,pmic-id = "e";
+ 
++		/* usb_2 eUSB2 PHY */
++		vreg_l2e_0p8: ldo2 {
++			regulator-name = "vreg_l2e_0p8";
++			regulator-min-microvolt = <880000>;
++			regulator-max-microvolt = <920000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
+ 		vreg_l3e_1p2: ldo3 {
+ 			regulator-name = "vreg_l3e_1p2";
+ 			regulator-min-microvolt = <1200000>;
+@@ -805,6 +847,27 @@ retimer_ss0_con_sbu_out: endpoint {
+ 	};
+ };
+ 
++&i2c5 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++
++	/* usb_2 (the webcam) */
++	eusb5_repeater: redriver@4b {
++		compatible = "nxp,ptn3222";
++		reg = <0x4b>;
++		#phy-cells = <0>;
++
++		vdd3v3-supply = <&vreg_l13b_3p0>;
++		vdd1v8-supply = <&vreg_l4b_1p8>;
++
++		reset-gpios = <&tlmm 10 GPIO_ACTIVE_LOW>;
++
++		pinctrl-0 = <&eusb5_reset_n>;
++		pinctrl-names = "default";
++	};
++};
++
+ &i2c7 {
+ 	clock-frequency = <400000>;
+ 
+@@ -1334,6 +1397,22 @@ &usb_1_ss1_qmpphy_out {
+ 	remote-endpoint = <&retimer_ss1_ss_in>;
+ };
+ 
++/* Internal USB 2.0 port: the Realtek webcam (0bda:5637) */
++&usb_2 {
++	dr_mode = "host";
++
++	status = "okay";
++};
++
++&usb_2_hsphy {
++	vdd-supply = <&vreg_l2e_0p8>;
++	vdda12-supply = <&vreg_l3e_1p2>;
++
++	phys = <&eusb5_repeater>;
++
++	status = "okay";
++};
++
+ /* Disabled (and its MMIO reserved) in the stock DTB as well */
+ &gic_its {
+ 	status = "disabled";
+@@ -1514,6 +1593,21 @@ ts_vdd_en: ts-vdd-en-state {
+ 		bias-disable;
+ 	};
+ 
++	eusb5_reset_n: eusb5-reset-n-state {
++		pins = "gpio10";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++		output-low;
++	};
++
++	ucam_reg_en: ucam-reg-en-state {
++		pins = "gpio206";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	edp_reg_en: edp-reg-en-state {
+ 		pins = "gpio70";
+ 		function = "gpio";
+-- 
+2.55.0
+
