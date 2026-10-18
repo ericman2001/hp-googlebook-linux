@@ -1,7 +1,7 @@
 From f4a286510e3b2009a75a2224f283088ece9290c7 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:13 -0500
-Subject: [PATCH 08/13] arm64: dts: qcom: x1e80100-google-quartz: Enable
+Subject: [PATCH 08/14] arm64: dts: qcom: x1e80100-google-quartz: Enable
  Bluetooth
 
 The Bluetooth half of the WCN785x is on QUP1 SE6 (uart14), as on other

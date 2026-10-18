@@ -24,8 +24,9 @@ the kernel patches are generic and should help any distribution.
 | Wi-Fi (WCN7850, Wi-Fi 7) | ✅ | 6 GHz / 160 MHz tested; needs a board file, see docs |
 | Bluetooth | ✅ | Same WCN7850 |
 | ADSP | ✅ | Device-signed firmware; identity IOMMU mapping (patches 0011/0012) |
-| USB-C (both ports) | ⚠️ USB 2.0 only | USB 3 / DP alt mode: UCSI and alt-mode wiring still to do |
-| Charging | ✅ | Through the ADSP: about 45 W into the battery at idle. Under a 12-core build it still drains (about −36 W) on a 60 W charger |
+| USB-C (both ports) | ✅ | USB 3 (SuperSpeed tested), orientation, roles. Wired like the CRD's first two ports, with PS8830 retimers |
+| DisplayPort alt mode | ✅ | Tested 2560×1440 at 120 Hz through a USB-C to HDMI adapter |
+| Charging | ✅ | Through the ADSP: USB-PD contract (3.25 A), about 45 W into the battery at idle. Under a 12-core build it still drains (about −36 W) on a 60 W charger |
 | Battery status | ✅ | `qcom-battmgr-bat`. The percentage is right, but time estimates are about 8× too short: the firmware reports mAh labelled as mWh |
 | Audio | ❌ | The ADSP's audio services come up; the sound card isn't described yet |
 | Suspend, webcam, fingerprint | ❓ | Not tried yet |

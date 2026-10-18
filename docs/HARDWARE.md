@@ -86,7 +86,7 @@ stock device tree in `dtbo_a`.
 | NVMe (WD SN5000S) | PCIe 6A ×4; PERST GPIO 152, CLKREQ 153, WAKE 154; 3.3 V GPIO 18 |
 | Wi-Fi/BT (WCN7850, HP/AzureWave 103c:8e64) | PCIe 4; 3.3 V GPIO 214; WLAN_EN 117, BT_EN 116; BT on QUP1 SE6 (`uart14`) |
 | eDP panel | DP3; power GPIO 70; HPD GPIO 119; enable (EL_ON3) PMC8380 #3 GPIO 4; brightness over DPCD |
-| USB-C | Right port `usb_1_ss1`, left port `usb_1_ss0`; eUSB2 repeaters in the SMB2360s |
+| USB-C | Left port `usb_1_ss0` (pmic-glink connector 0), right port `usb_1_ss1` (connector 1); eUSB2 repeaters in the SMB2360s; PS8830 retimers on I²C 3 (reset PM8550 GPIO 10, RF_CLK3) and I²C 7 (reset TLMM 176, RF_CLK4); orientation GPIOs 121/123. The same as the CRD's ports 0/1 |
 | Display rails | eDP PHY on L2J (1.2 V) and L3J (0.88 V), shared with the USB QMP PHYs |
 
 ## Development tricks
