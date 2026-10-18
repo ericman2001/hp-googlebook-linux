@@ -32,7 +32,7 @@ the kernel patches are generic and should help any distribution.
 | Internal mics (2× DMIC) | ⚠️ | Work, with an occasional click on one mic (see docs/HARDWARE.md) |
 | Headphone jack | ✅ | WCD938x; the headset mic is untested (no test hardware) |
 | DP audio | ❓ | Described (DP0/DP1), untested; reports welcome |
-| Suspend | ❌ | The SoC resets when waking from s2idle, and deep has no resume path. See [docs/SUSPEND.md](docs/SUSPEND.md). The system-wide idle state works, which lowers idle power |
+| Suspend | ✅ | s2idle (suspend to idle) resumes into the running session; tested waking by key press. Needs patches 0021/0022 and `gentoo/etc/systemd/sleep.conf.d/` (deep has no resume path in this firmware). So far only the CPU subsystem reaches its sleep state while suspended, so standby power can still improve. See [docs/SUSPEND.md](docs/SUSPEND.md) |
 | Webcam | ✅ | USB UVC camera ("HP 5MP Camera", 0bda:5637) on the internal USB 2.0 port. MJPEG up to 2880×1800, YUYV up to 640×480 |
 | Fingerprint | ✅ | ChromeOS fingerprint MCU (ELAN sensor) on an internal USB port; matching happens on the MCU. Needs our `cros_ec_usb` kernel driver and libfprint's crfpmoc driver (not merged upstream yet), packaged in the `gentoo/` overlay. Enrolling and unlocking in GNOME work |
 
@@ -92,6 +92,10 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
    `/dev/cros_fp`.
 8. `gpio: cros-ec`: don't fail to probe on an EC without GPIOs, such as the
    fingerprint MCU. Generic fix.
+9. `clk: qcom: gcc-x1e80100`: put the PCIe controller and PHY GDSCs in
+   retention instead of off during suspend. The controller half is an upstream
+   patch not yet in 7.2; the PHY half is ours. Without them, resuming from
+   s2idle resets the SoC.
 
 The generic fixes are meant to go upstream.
 

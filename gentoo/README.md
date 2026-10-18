@@ -33,6 +33,9 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
   * `etc/pipewire/{client,pipewire-pulse}.conf.d/50-googlebook-upmix.conf`
     copies stereo to the second speaker pair (the speaker device has four
     channels, FL FR RL RR, one per amplifier).
+* `etc/systemd/sleep.conf.d/googlebook.conf`: suspend to idle (s2idle), the
+  only working sleep mode, and no hibernation. See
+  [docs/SUSPEND.md](../docs/SUSPEND.md).
 * `etc/systemd/system/googlebook-ec-log.service` and
   `usr/local/libexec/googlebook-ec-log`: save the Chrome EC console log at
   boot to `/var/log/ec/` (for suspend debugging, see

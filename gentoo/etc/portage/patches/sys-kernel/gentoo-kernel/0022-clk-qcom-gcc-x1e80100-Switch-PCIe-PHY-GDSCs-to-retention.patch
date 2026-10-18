@@ -1,0 +1,64 @@
+From 3798a7e68ba57e48f9c69e305acaad23c0a4d02a Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 15:32:15 -0500
+Subject: [PATCH] clk: qcom: gcc-x1e80100: Switch PCIe PHY GDSCs to retention
+ mode too
+
+The PCIe PHYs don't use runtime PM, so on system suspend genpd counts them
+as suspended and turns their GDSCs off, as PWRSTS_OFF_ON allows. The PHY
+then loses its state while the PCIe controller still has the link up, and
+on resume the controller's first register access is a NoC error, which
+TrustZone turns into a SoC reset. The HP Googlebook resets like this when
+resuming from s2idle, with the Wi-Fi (PCIe 4) or the NVMe (PCIe 6A).
+
+The previous patch did this for the PCIe controller GDSCs. Do the same
+for the PHY GDSCs, as SM8550 and SM8650 already do.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/clk/qcom/gcc-x1e80100.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/clk/qcom/gcc-x1e80100.c b/drivers/clk/qcom/gcc-x1e80100.c
+index fefacae91..9af83f128 100644
+--- a/drivers/clk/qcom/gcc-x1e80100.c
++++ b/drivers/clk/qcom/gcc-x1e80100.c
+@@ -6600,7 +6600,7 @@ static struct gdsc gcc_pcie_3_phy_gdsc = {
+ 	.pd = {
+ 		.name = "gcc_pcie_3_phy_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ 	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | VOTABLE,
+ };
+ 
+@@ -6624,7 +6624,7 @@ static struct gdsc gcc_pcie_4_phy_gdsc = {
+ 	.pd = {
+ 		.name = "gcc_pcie_4_phy_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ 	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | VOTABLE,
+ };
+ 
+@@ -6648,7 +6648,7 @@ static struct gdsc gcc_pcie_5_phy_gdsc = {
+ 	.pd = {
+ 		.name = "gcc_pcie_5_phy_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ 	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | VOTABLE,
+ };
+ 
+@@ -6660,7 +6660,7 @@ static struct gdsc gcc_pcie_6_phy_gdsc = {
+ 	.pd = {
+ 		.name = "gcc_pcie_6_phy_gdsc",
+ 	},
+-	.pwrsts = PWRSTS_OFF_ON,
++	.pwrsts = PWRSTS_RET_ON,
+ 	.flags = POLL_CFG_GDSCR | RETAIN_FF_ENABLE | VOTABLE,
+ };
+ 
+-- 
+2.55.0
+
