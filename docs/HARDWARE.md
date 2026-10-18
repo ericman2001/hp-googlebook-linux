@@ -78,9 +78,9 @@ stock device tree in `dtbo_a`.
 
 * **Audio is the CRD's design.** The stock sound card is even named
   `hamoa-x1e80100-crd-wsa884x-snd-card`. The speaker PCM has four
-  channels, one per amplifier, and by ear they are left, right, right,
-  left (all four at the front edge). PipeWire assumes FL FR RL RR, so
-  without the WirePlumber rule two speakers play the wrong side.
+  channels, FL FR RL RR, one per amplifier, all four at the front edge.
+  PipeWire only plays stereo on the rear pair with stream upmixing on
+  (`channelmix.upmix`, a stream property, not a sink property).
 * **DMIC clicks:** DMIC1 gives random full-scale samples at the CRD's
   4.8 MHz DMIC clock (~7 per 30 s), 2.4 MHz (~3) and 1.2 MHz (none, but
   15 dB more noise). The pin setup matches the stock DT. 2.4 MHz is used.

@@ -30,10 +30,9 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
     selects the CRD's UCM profile, since there is no DMI to match on.
   * `lib/firmware/updates/qcom/x1e80100/X1E80100-Google-Quartz-tplg.bin`
     is a symlink to the CRD's AudioReach topology.
-  * `etc/wireplumber/.../51-googlebook-speakers.conf` gives the speaker
-    channels their real positions (left, right, right, left).
   * `etc/pipewire/{client,pipewire-pulse}.conf.d/50-googlebook-upmix.conf`
-    copies stereo to the second speaker pair.
+    copies stereo to the second speaker pair (the speaker device has four
+    channels, FL FR RL RR, one per amplifier).
 * `usr/local/lib/googlebook/ath12k-board2.py`: lists and extracts
   `board-2.bin` entries, for the Wi-Fi board file
   ([docs/FIRMWARE.md](../docs/FIRMWARE.md)).
