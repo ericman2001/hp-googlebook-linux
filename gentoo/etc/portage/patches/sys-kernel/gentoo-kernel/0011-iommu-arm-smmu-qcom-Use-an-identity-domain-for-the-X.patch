@@ -1,0 +1,32 @@
+From 174e994ac23163a9b9c4b2aed3639af192d033fe Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 00:39:14 -0500
+Subject: [PATCH 11/13] iommu/arm-smmu-qcom: Use an identity domain for the
+ X1E80100 ADSP
+
+When Linux runs at EL2 without a hypervisor, as on Chrome OS devices
+such as the HP Googlebook, nothing else sets up the ADSP's stream. Give
+it an identity default domain, like the sc7180/sc7280 modems on Chrome
+OS firmware. Where TrustZone provides a resource table, qcom_q6v5_pas
+still attaches its own domain on top.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index e2c914fcc..eec04860d 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -425,6 +425,7 @@ static const struct of_device_id qcom_smmu_client_of_match[] __maybe_unused = {
+ 	{ .compatible = "qcom,sm6375-mdss" },
+ 	{ .compatible = "qcom,sm8150-mdss" },
+ 	{ .compatible = "qcom,sm8250-mdss" },
++	{ .compatible = "qcom,x1e80100-adsp-pas" },
+ 	{ .compatible = "qcom,x1e80100-mdss" },
+ 	{ }
+ };
+-- 
+2.55.0
+

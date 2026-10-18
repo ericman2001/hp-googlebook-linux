@@ -1,0 +1,52 @@
+From 1f872088600860b561cf549bafded7237aa01a81 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 00:39:14 -0500
+Subject: [PATCH 12/13] remoteproc: qcom: pas: Fall back to the default domain
+ without a resource table
+
+Without a hypervisor, the PAS driver asks TrustZone for the resource
+table of a remote processor with an IOMMU stream. Chrome OS TrustZone
+firmware (HP Googlebook, X1E80100) fails that call with -EIO, so the
+ADSP never boots. Mapping only its carveouts isn't enough either: the
+ADSP then faults on the peripherals it uses.
+
+Fall back to the default domain of the stream instead, which
+arm-smmu-qcom makes an identity mapping. With that, the ADSP boots and
+its battery charger service works.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/remoteproc/qcom_q6v5_pas.c | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/remoteproc/qcom_q6v5_pas.c b/drivers/remoteproc/qcom_q6v5_pas.c
+index cb3e51d6f..a52c476b6 100644
+--- a/drivers/remoteproc/qcom_q6v5_pas.c
++++ b/drivers/remoteproc/qcom_q6v5_pas.c
+@@ -486,8 +486,21 @@ static int qcom_pas_parse_firmware(struct rproc *rproc, const struct firmware *f
+ 	output_rt = qcom_scm_pas_get_rsc_table(pas->pas_ctx, table, table_sz, &output_rt_size);
+ 	ret = IS_ERR(output_rt) ? PTR_ERR(output_rt) : 0;
+ 	if (ret) {
+-		dev_err(pas->dev, "Error in getting resource table: %d\n", ret);
+-		return ret;
++		/*
++		 * Not all TrustZone firmware can provide the resource table
++		 * (Chrome OS firmware can't). Without it, the remote processor
++		 * can't be confined to its own IOMMU domain, so leave it in
++		 * the default domain of its stream: an identity mapping, as
++		 * given by arm-smmu-qcom.
++		 */
++		dev_info(pas->dev,
++			 "no resource table from TrustZone (%d), using the default IOMMU domain\n",
++			 ret);
++		iommu_detach_device(rproc->domain, rproc->dev.parent);
++		iommu_domain_free(rproc->domain);
++		rproc->domain = NULL;
++		rproc->has_iommu = false;
++		return 0;
+ 	}
+ 
+ 	kfree(rproc->cached_table);
+-- 
+2.55.0
+

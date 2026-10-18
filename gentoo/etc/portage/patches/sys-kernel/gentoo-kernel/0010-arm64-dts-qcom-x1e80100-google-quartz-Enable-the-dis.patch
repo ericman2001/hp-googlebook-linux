@@ -1,7 +1,7 @@
 From c2e04d31c39c34bd8fb5fdfa6da99ac01754fda8 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:13 -0500
-Subject: [PATCH 10/10] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+Subject: [PATCH 10/13] arm64: dts: qcom: x1e80100-google-quartz: Enable the
  display and GPU
 
 The eDP panel (a Samsung 2880x1800 120 Hz OLED) is on DP3 and wired like
