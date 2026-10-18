@@ -24,15 +24,17 @@ the kernel patches are generic and should help any distribution.
 | Wi-Fi (WCN7850, Wi-Fi 7) | ✅ | 6 GHz / 160 MHz tested; needs a board file, see docs |
 | Bluetooth | ✅ | Same WCN7850 |
 | USB-C (both ports) | ⚠️ USB 2.0 only | USB 3 / DP alt mode need the ADSP |
-| **Charging / battery status** | ❌ | **Needs the ADSP; the battery drains even on the charger** |
+| **Charging** | ⚠️ limited | ~21 W reaches the battery; heavy load drains it. Full charging needs the ADSP |
+| Battery status | ⚠️ via EC only | `tools/ecbatt.py` reads the Chrome EC; no power_supply device yet |
 | Audio | ❌ | Needs the ADSP |
 | Suspend, webcam, fingerprint | ❓ | Not tried yet |
 
-> **Warning: charging.** Until the ADSP (audio DSP) runs under Linux, nothing
-> negotiates USB-PD power, so the laptop discharges even when plugged in, and
-> faster under load. A long kernel build flattened the battery during
-> bring-up. Charge with the laptop **powered off**: the firmware then charges
-> normally.
+> **Warning: charging.** Until the ADSP (audio DSP) runs under Linux, the
+> charger only delivers about 21 W to the battery. That is fine at idle, but a
+> full-load job such as a 12-core kernel build drains the battery even on a
+> 60 W charger. One flattened the battery during bring-up. Watch
+> `tools/ecbatt.py` during long builds, use fewer jobs, and charge with the
+> laptop **powered off** for full speed: the firmware then charges normally.
 
 ## Layout
 

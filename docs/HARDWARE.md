@@ -58,8 +58,8 @@ stock device tree in `dtbo_a`.
   there are no components to match.
 * **Charging is done by the ADSP.** coreboot runs a charging applet on the
   ADSP and then resets it before booting the OS, which is expected to load
-  the full ADSP firmware. Without it there is no PD negotiation, so the
-  laptop discharges on the charger.
+  the full ADSP firmware. Without it, charging stays limited to about 21 W
+  into the battery, so heavy load drains it even when plugged in.
 
 ## Board map
 
