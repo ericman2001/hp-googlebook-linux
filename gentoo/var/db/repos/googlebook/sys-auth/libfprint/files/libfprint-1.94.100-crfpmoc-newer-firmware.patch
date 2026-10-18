@@ -1,5 +1,5 @@
 From: ericman2001 <ericman2001@hotmail.com>
-Subject: crfpmoc: Fixes for newer FPMCU firmware and enrolling
+Subject: crfpmoc: Fixes for newer FPMCU firmware, enrolling and reboots
 
 Tested on the HP Googlebook's FPMCU ("niedzica" firmware, over USB):
 
@@ -15,6 +15,11 @@ Tested on the HP Googlebook's FPMCU ("niedzica" firmware, over USB):
   enrolling, as verifying already does: setting it recalibrates the sensor,
   and with the finger still on it from fprintd's duplicate check, the ELAN
   sensor detected nothing afterwards.
+* Keep the seed (and the user context) in a root-only file,
+  /var/lib/fprint/crfpmoc-keys, generated once with getrandom(). The MCU
+  derives the template key from the seed and forgets it on every reset,
+  so a fresh random seed per session made every print fail to decrypt
+  after a reboot ("Failed to decipher template", EC_RES_UNAVAILABLE).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
@@ -118,10 +123,20 @@ index 4b9584f..a09ef9d 100644
    if (crfpmoc_umockdev_recording_enabled (FPI_DEVICE_CRFPMOC (transfer->device)))
      crfpmoc_umockdev_record (FPI_DEVICE_CRFPMOC (transfer->device), r,
 diff --git a/libfprint/drivers/crfpmoc/crfpmoc.c b/libfprint/drivers/crfpmoc/crfpmoc.c
-index eed034f..a9e6575 100644
+index eed034f..af4cc77 100644
 --- a/libfprint/drivers/crfpmoc/crfpmoc.c
 +++ b/libfprint/drivers/crfpmoc/crfpmoc.c
-@@ -403,7 +403,7 @@ crfpmoc_umockdev_record (FpiDeviceCrfpMoc *self, int res,
+@@ -23,6 +23,9 @@
+ 
+ #define FP_COMPONENT "crfpmoc"
+ 
++#include <errno.h>
++#include <string.h>
++#include <sys/random.h>
+ #include <glib-unix.h>
+ #include <gio/gunixinputstream.h>
+ 
+@@ -403,7 +406,7 @@ crfpmoc_umockdev_record (FpiDeviceCrfpMoc *self, int res,
   * to see if a timeout is active.
   */
  static gboolean
@@ -130,7 +145,7 @@ index eed034f..a9e6575 100644
  {
    g_autoptr(GError) error = NULL;
    FpiSsm *ssm = user_data;
-@@ -593,7 +593,8 @@ crfpmoc_eventmask_cb (CrfpMocEcTransfer *transfer, GAsyncResult *res, gpointer u
+@@ -593,7 +596,8 @@ crfpmoc_eventmask_cb (CrfpMocEcTransfer *transfer, GAsyncResult *res, gpointer u
    GSource *poll_source = g_pollable_input_stream_create_source (
      G_POLLABLE_INPUT_STREAM (data->poll_input_stream),
      fpi_device_get_cancellable (device));
@@ -140,7 +155,7 @@ index eed034f..a9e6575 100644
    data->poll_source = g_source_attach (poll_source, NULL);
  }
  
-@@ -723,7 +724,7 @@ crfpmoc_clear_storage_cb (CrfpMocEcTransfer *transfer, GAsyncResult *res, gpoint
+@@ -723,7 +727,7 @@ crfpmoc_clear_storage_cb (CrfpMocEcTransfer *transfer, GAsyncResult *res, gpoint
        data->clear_step = 1;
        p.mode = CRFPMOC_FP_MODE_RESET_SENSOR;
        new_transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
@@ -149,7 +164,106 @@ index eed034f..a9e6575 100644
        crfpmoc_ec_transfer_submit_cmd (new_transfer, fpi_device_get_cancellable (device),
                                        crfpmoc_clear_storage_cb, ssm);
      }
-@@ -1339,7 +1340,7 @@ handle_enroll_reset (FpiSsm *ssm)
+@@ -1025,9 +1029,69 @@ crfpmoc_open_ssm_done (FpiSsm *ssm, FpDevice *device, GError *error)
+   fpi_device_open_complete (device, error);
+ }
+ 
+-/* Initialise the per-session encryption seed and user context. In emulation
+- * mode fixed test values are used so the recorded ioctl replay stays
+- * deterministic; on real hardware random values are generated.
++/*
++ * The MCU derives the template encryption key from the seed, and forgets
++ * the seed when it resets (on every reboot). Templates are stored on the
++ * host, so the seed has to be the same every time, or every print stops
++ * matching after a reboot ("Failed to decipher template"). ChromeOS gets it
++ * from the TPM; keep it in a root-only file instead, next to fprintd's
++ * prints, with the user context.
++ */
++#define CRFPMOC_KEYS_DIR  "/var/lib/fprint"
++#define CRFPMOC_KEYS_FILE CRFPMOC_KEYS_DIR "/crfpmoc-keys"
++
++static gboolean
++crfpmoc_load_keys (FpiDeviceCrfpMoc *self)
++{
++  g_autoptr(GError) error = NULL;
++  g_autofree gchar *contents = NULL;
++  gsize len = 0;
++
++  if (!g_file_get_contents (CRFPMOC_KEYS_FILE, &contents, &len, &error))
++    {
++      if (!g_error_matches (error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
++        fp_warn ("Can't read %s: %s", CRFPMOC_KEYS_FILE, error->message);
++      return FALSE;
++    }
++
++  if (len != sizeof (self->seed) + sizeof (self->context))
++    {
++      fp_warn ("%s has the wrong size (%zu bytes)", CRFPMOC_KEYS_FILE, len);
++      return FALSE;
++    }
++
++  memcpy (self->seed, contents, sizeof (self->seed));
++  memcpy (self->context, contents + sizeof (self->seed), sizeof (self->context));
++  fp_dbg ("Loaded the seed and context from %s", CRFPMOC_KEYS_FILE);
++
++  return TRUE;
++}
++
++static void
++crfpmoc_save_keys (FpiDeviceCrfpMoc *self)
++{
++  g_autoptr(GError) error = NULL;
++  guint8 contents[sizeof (self->seed) + sizeof (self->context)];
++
++  memcpy (contents, self->seed, sizeof (self->seed));
++  memcpy (contents + sizeof (self->seed), self->context, sizeof (self->context));
++
++  if (g_mkdir_with_parents (CRFPMOC_KEYS_DIR, 0700) < 0 ||
++      !g_file_set_contents_full (CRFPMOC_KEYS_FILE, (const gchar *) contents,
++                                 sizeof (contents),
++                                 G_FILE_SET_CONTENTS_CONSISTENT, 0600, &error))
++    fp_warn ("Can't save the seed to %s, prints won't survive a reboot: %s",
++             CRFPMOC_KEYS_FILE, error ? error->message : g_strerror (errno));
++  else
++    fp_dbg ("Saved a new seed and context to %s", CRFPMOC_KEYS_FILE);
++
++  explicit_bzero (contents, sizeof (contents));
++}
++
++/* Initialise the encryption seed and user context. In emulation mode fixed
++ * test values are used so the recorded ioctl replay stays deterministic; on
++ * real hardware they are loaded from CRFPMOC_KEYS_FILE, or generated at
++ * random and saved there the first time.
+  */
+ static void
+ crfpmoc_init_keys (FpiDeviceCrfpMoc *self)
+@@ -1042,13 +1106,20 @@ crfpmoc_init_keys (FpiDeviceCrfpMoc *self)
+       memcpy (self->seed, CRFPMOC_DEFAULT_SEED, sizeof (self->seed));
+       memcpy (self->context, CRFPMOC_DEFAULT_CONTEXT, sizeof (self->context));
+     }
+-  else
++  else if (!crfpmoc_load_keys (self))
+     {
+-      for (size_t i = 0; i < sizeof (self->seed); i++)
+-        self->seed[i] = (guint8) g_random_int_range (0, 256);
++      if (getrandom (self->seed, sizeof (self->seed), 0) != sizeof (self->seed) ||
++          getrandom (self->context, sizeof (self->context), 0) != sizeof (self->context))
++        {
++          fp_warn ("getrandom failed, using GRand: %s", g_strerror (errno));
++          for (size_t i = 0; i < sizeof (self->seed); i++)
++            self->seed[i] = (guint8) g_random_int_range (0, 256);
++
++          for (size_t i = 0; i < sizeof (self->context); i++)
++            self->context[i] = (guint8) g_random_int_range (0, 256);
++        }
+ 
+-      for (size_t i = 0; i < sizeof (self->context); i++)
+-        self->context[i] = (guint8) g_random_int_range (0, 256);
++      crfpmoc_save_keys (self);
+     }
+ }
+ 
+@@ -1339,7 +1410,7 @@ handle_enroll_reset (FpiSsm *ssm)
    CrfpMocEcTransfer *transfer;
  
    transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
@@ -158,7 +272,7 @@ index eed034f..a9e6575 100644
    crfpmoc_ec_transfer_submit_cmd (transfer, NULL, crfpmoc_ssm_ec_transfer_cb, ssm);
  }
  
-@@ -1482,6 +1483,8 @@ handle_ensure_keys (FpiSsm *ssm)
+@@ -1482,6 +1553,8 @@ handle_ensure_keys (FpiSsm *ssm)
    crfpmoc_ssm_start_subsm_full (self, sub, g_new0 (KeysData, 1), g_free);
  }
  
@@ -167,7 +281,7 @@ index eed034f..a9e6575 100644
  static void
  crfpmoc_enroll_run_state (FpiSsm *ssm, FpDevice *device)
  {
-@@ -1491,6 +1494,15 @@ crfpmoc_enroll_run_state (FpiSsm *ssm, FpDevice *device)
+@@ -1491,6 +1564,15 @@ crfpmoc_enroll_run_state (FpiSsm *ssm, FpDevice *device)
        handle_enroll_check_capacity (ssm);
        break;
  
@@ -183,7 +297,7 @@ index eed034f..a9e6575 100644
      case ENROLL_ENSURE_KEYS:
        handle_ensure_keys (ssm);
        break;
-@@ -1611,7 +1623,7 @@ handle_verify_reset (FpiSsm *ssm)
+@@ -1611,7 +1693,7 @@ handle_verify_reset (FpiSsm *ssm)
    CrfpMocEcTransfer *transfer;
  
    transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
@@ -192,7 +306,7 @@ index eed034f..a9e6575 100644
    crfpmoc_ec_transfer_submit_cmd (transfer, NULL, crfpmoc_ssm_ec_transfer_cb, ssm);
  }
  
-@@ -1841,7 +1853,7 @@ crfpmoc_clear_storage_run_state (FpiSsm *ssm, FpDevice *device)
+@@ -1841,7 +1923,7 @@ crfpmoc_clear_storage_run_state (FpiSsm *ssm, FpDevice *device)
        data->clear_step = 0;
  
        transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,

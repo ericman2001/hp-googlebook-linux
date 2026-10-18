@@ -50,7 +50,11 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
   pinned at 5644259) and our fixes for the Googlebook's newer MCU firmware.
   After copying it, run `ebuild /var/db/repos/googlebook/sys-auth/libfprint/libfprint-1.94.100.ebuild manifest`
   if Portage complains, then `emerge sys-auth/fprintd`, and enroll a finger
-  in GNOME Settings → Users. The kernel side needs patches 0018 to 0020 and
+  in GNOME Settings → Users. The MCU encrypts the prints (stored in
+  `/var/lib/fprint`) with a key derived from a seed that it forgets on every
+  reboot; our patch keeps the seed in `/var/lib/fprint/crfpmoc-keys`
+  (root-only). Losing that file means enrolling again, and so does creating
+  it while the MCU already has a seed: enroll after a reboot. The kernel side needs patches 0018 to 0020 and
   `CONFIG_CROS_EC_USB=m` (in the config fragment).
 
 Also needed on the laptop (not files here):
