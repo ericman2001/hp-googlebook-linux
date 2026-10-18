@@ -30,8 +30,8 @@ the kernel patches are generic and should help any distribution.
 | Battery status | ✅ | `qcom-battmgr-bat`; GNOME shows the percentage and charging state. The percentage is right, but time estimates are about 8× too short: the firmware reports mAh labelled as mWh |
 | Speakers (4× WSA884x) | ✅ | The CRD's design; all four at the front edge. Needs the PipeWire upmix setting in `gentoo/etc/pipewire/` so stereo reaches all four |
 | Internal mics (2× DMIC) | ⚠️ | Work, with an occasional click on one mic (see docs/HARDWARE.md) |
-| Headphone jack | ✅ | WCD938x; the headset mic isn't tested yet |
-| DP audio | ❓ | Described (DP0/DP1), not tested yet |
+| Headphone jack | ✅ | WCD938x; the headset mic is untested (no test hardware) |
+| DP audio | ❓ | Described (DP0/DP1), untested; reports welcome |
 | Suspend | ❌ | The SoC resets when waking from s2idle, and deep has no resume path. See [docs/SUSPEND.md](docs/SUSPEND.md). The system-wide idle state works, which lowers idle power |
 | Webcam, fingerprint | ❓ | Not tried yet |
 
