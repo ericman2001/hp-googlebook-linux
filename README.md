@@ -17,7 +17,7 @@ the kernel patches are generic and should help any distribution.
 | Boot (slot B, EL2, no hypervisor) | ✅ | Android boot image v4; DTB in `dtbo_b` |
 | Display (2880×1800 120 Hz OLED) | ✅ | `msm` on eDP; brightness over DPCD AUX |
 | GPU (Adreno X1-85) | ✅ | Firmware from linux-firmware; no zap shader at EL2 |
-| Keyboard, power button | ✅ | Chrome EC over SPI; needs our spi-geni fix |
+| Keyboard, power button | ✅ | Chrome EC over SPI; needs our spi-geni fix. Keyboard backlight and brightness keys work in GNOME |
 | Touchpad (Synaptics, haptic) | ✅ | HID over I²C |
 | Touchscreen (ELAN) | ✅ | HID over I²C, pen collections present |
 | NVMe SSD | ✅ | PCIe 6A, Gen4 ×4 |
@@ -27,10 +27,11 @@ the kernel patches are generic and should help any distribution.
 | USB-C (both ports) | ✅ | USB 3 (SuperSpeed tested), orientation, roles. Wired like the CRD's first two ports, with PS8830 retimers |
 | DisplayPort alt mode | ✅ | Tested 2560×1440 at 120 Hz through a USB-C to HDMI adapter |
 | Charging | ✅ | Through the ADSP: USB-PD contract (3.25 A), about 45 W into the battery at idle. Under a 12-core build it still drains (about −36 W) on a 60 W charger |
-| Battery status | ✅ | `qcom-battmgr-bat`. The percentage is right, but time estimates are about 8× too short: the firmware reports mAh labelled as mWh |
+| Battery status | ✅ | `qcom-battmgr-bat`; GNOME shows the percentage and charging state. The percentage is right, but time estimates are about 8× too short: the firmware reports mAh labelled as mWh |
 | Speakers (4× WSA884x) | ✅ | The CRD's design; all four at the front edge. Needs the PipeWire upmix setting in `gentoo/etc/pipewire/` so stereo reaches all four |
 | Internal mics (2× DMIC) | ⚠️ | Work, with an occasional click on one mic (see docs/HARDWARE.md) |
-| Headphone jack, DP audio | ❓ | Described (WCD938x, DP0/DP1) but not tested yet |
+| Headphone jack | ✅ | WCD938x; the headset mic isn't tested yet |
+| DP audio | ❓ | Described (DP0/DP1), not tested yet |
 | Suspend, webcam, fingerprint | ❓ | Not tried yet |
 
 > **Charging needs the ADSP.** Without it (for example in the rescue
