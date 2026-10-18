@@ -1,0 +1,258 @@
+From: ericman2001 <ericman2001@hotmail.com>
+Subject: crfpmoc: Fixes for newer FPMCU firmware and enrolling
+
+Tested on the HP Googlebook's FPMCU ("niedzica" firmware, over USB):
+
+* It only implements EC_CMD_FP_INFO v3. Retry a v1 request it rejects with
+  EC_RES_INVALID_VERSION as v3 and convert the response to the v1 layout.
+* EC_CMD_FP_MODE always returns the mode, and the kernel rejects a response
+  longer than the buffer (EMSGSIZE), so give every FP_MODE request room for
+  it. This made enrolling fail right away while clearing the storage.
+* Fix crfpmoc_read_bytes()'s signature: a pollable source calls a
+  GPollableSourceFunc, with the stream as the first argument, which the
+  driver took for its state machine (crash as soon as an event arrived).
+* Wait for the finger to be lifted before setting the context when
+  enrolling, as verifying already does: setting it recalibrates the sensor,
+  and with the finger still on it from fprintd's duplicate check, the ELAN
+  sensor detected nothing afterwards.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/libfprint/drivers/crfpmoc/crfpmoc-ec-transfer.c b/libfprint/drivers/crfpmoc/crfpmoc-ec-transfer.c
+index 4b9584f..a09ef9d 100644
+--- a/libfprint/drivers/crfpmoc/crfpmoc-ec-transfer.c
++++ b/libfprint/drivers/crfpmoc/crfpmoc-ec-transfer.c
+@@ -118,6 +118,74 @@ do_ioctl_xcmd (CrfpMocEcTransfer                 *transfer,
+   return r;
+ }
+ 
++/*
++ * Newer FPMCU firmware only implements EC_CMD_FP_INFO v3. Retry a v1 request
++ * that it rejects as v3 and hand back the v1 layout, so that the rest of the
++ * driver doesn't need to know.
++ */
++static int
++do_fp_info_v3_fallback (CrfpMocEcTransfer                  *transfer,
++                        struct crfpmoc_cros_ec_command_v2 **s_cmd,
++                        GError                            **error)
++{
++  struct crfpmoc_ec_response_fp_info_v3 *v3;
++  struct crfpmoc_ec_response_fp_info v1 = { 0 };
++  struct crfpmoc_cros_ec_command_v2 *cmd;
++  CrfpMocEcTransfer v3_transfer;
++  int r;
++
++  if (transfer->insize < sizeof (v1) || !transfer->indata)
++    return -1;
++
++  fp_dbg ("FP_INFO v1 not supported, trying v3");
++
++  v3_transfer = *transfer;
++  v3_transfer.version = 3;
++  v3_transfer.insize = sizeof (*v3);
++  v3_transfer.indata = NULL;
++
++  cmd = build_raw_cmd (&v3_transfer);
++  g_free (*s_cmd);
++  *s_cmd = cmd;
++
++  g_clear_error (error);
++  r = do_ioctl_xcmd (&v3_transfer, cmd, error);
++  if (r < 0)
++    return r;
++  if (r < G_STRUCT_OFFSET (struct crfpmoc_ec_response_fp_info_v3,
++                           image_frame_params))
++    {
++      g_set_error (error, FP_DEVICE_ERROR, FP_DEVICE_ERROR_PROTO,
++                   "FP_INFO v3 response too short (%d bytes)", r);
++      return -1;
++    }
++
++  v3 = (struct crfpmoc_ec_response_fp_info_v3 *) cmd->data;
++  v1.vendor_id = v3->vendor_id;
++  v1.product_id = v3->product_id;
++  v1.model_id = v3->model_id;
++  v1.version = v3->version;
++  v1.errors = v3->errors;
++  v1.template_size = v3->template_size;
++  v1.template_max = v3->template_max;
++  v1.template_valid = v3->template_valid;
++  v1.template_dirty = v3->template_dirty;
++  v1.template_version = v3->template_version;
++  if (v3->num_capture_types > 0 &&
++      r >= G_STRUCT_OFFSET (struct crfpmoc_ec_response_fp_info_v3,
++                            image_frame_params[1]))
++    {
++      v1.frame_size = v3->image_frame_params[0].frame_size;
++      v1.pixel_format = v3->image_frame_params[0].pixel_format;
++      v1.width = v3->image_frame_params[0].width;
++      v1.height = v3->image_frame_params[0].height;
++      v1.bpp = v3->image_frame_params[0].bpp;
++    }
++
++  memcpy (transfer->indata, &v1, sizeof (v1));
++  return sizeof (v1);
++}
++
+ static void
+ command_thread_func (GTask        *task,
+                      gpointer      source_object,
+@@ -136,6 +204,9 @@ command_thread_func (GTask        *task,
+   s_cmd = build_raw_cmd (transfer);
+ 
+   r = do_ioctl_xcmd (transfer, s_cmd, &error);
++  if (r < 0 && s_cmd->result == EC_RES_INVALID_VERSION &&
++      transfer->command == CRFPMOC_EC_CMD_FP_INFO && transfer->version == 1)
++    r = do_fp_info_v3_fallback (transfer, &s_cmd, &error);
+ 
+   if (crfpmoc_umockdev_recording_enabled (FPI_DEVICE_CRFPMOC (transfer->device)))
+     {
+@@ -355,6 +426,9 @@ crfpmoc_ec_transfer_submit_sync (CrfpMocEcTransfer *transfer,
+ 
+   s_cmd = build_raw_cmd (transfer);
+   r = do_ioctl_xcmd (transfer, s_cmd, error);
++  if (r < 0 && s_cmd->result == EC_RES_INVALID_VERSION &&
++      transfer->command == CRFPMOC_EC_CMD_FP_INFO && transfer->version == 1)
++    r = do_fp_info_v3_fallback (transfer, &s_cmd, error);
+ 
+   if (crfpmoc_umockdev_recording_enabled (FPI_DEVICE_CRFPMOC (transfer->device)))
+     crfpmoc_umockdev_record (FPI_DEVICE_CRFPMOC (transfer->device), r,
+diff --git a/libfprint/drivers/crfpmoc/crfpmoc.c b/libfprint/drivers/crfpmoc/crfpmoc.c
+index eed034f..a9e6575 100644
+--- a/libfprint/drivers/crfpmoc/crfpmoc.c
++++ b/libfprint/drivers/crfpmoc/crfpmoc.c
+@@ -403,7 +403,7 @@ crfpmoc_umockdev_record (FpiDeviceCrfpMoc *self, int res,
+  * to see if a timeout is active.
+  */
+ static gboolean
+-crfpmoc_read_bytes (gpointer user_data)
++crfpmoc_read_bytes (GObject *pollable_stream, gpointer user_data)
+ {
+   g_autoptr(GError) error = NULL;
+   FpiSsm *ssm = user_data;
+@@ -593,7 +593,8 @@ crfpmoc_eventmask_cb (CrfpMocEcTransfer *transfer, GAsyncResult *res, gpointer u
+   GSource *poll_source = g_pollable_input_stream_create_source (
+     G_POLLABLE_INPUT_STREAM (data->poll_input_stream),
+     fpi_device_get_cancellable (device));
+-  g_source_set_callback (poll_source, crfpmoc_read_bytes, ssm, NULL);
++  /* A pollable source calls a GPollableSourceFunc, with the stream first */
++  g_source_set_callback (poll_source, G_SOURCE_FUNC (crfpmoc_read_bytes), ssm, NULL);
+   data->poll_source = g_source_attach (poll_source, NULL);
+ }
+ 
+@@ -723,7 +724,7 @@ crfpmoc_clear_storage_cb (CrfpMocEcTransfer *transfer, GAsyncResult *res, gpoint
+       data->clear_step = 1;
+       p.mode = CRFPMOC_FP_MODE_RESET_SENSOR;
+       new_transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
+-                                                  &p, sizeof (p), 0);
++                                                  &p, sizeof (p), sizeof (struct crfpmoc_ec_response_fp_mode));
+       crfpmoc_ec_transfer_submit_cmd (new_transfer, fpi_device_get_cancellable (device),
+                                       crfpmoc_clear_storage_cb, ssm);
+     }
+@@ -1339,7 +1340,7 @@ handle_enroll_reset (FpiSsm *ssm)
+   CrfpMocEcTransfer *transfer;
+ 
+   transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
+-                                          &p, sizeof (p), 0);
++                                          &p, sizeof (p), sizeof (struct crfpmoc_ec_response_fp_mode));
+   crfpmoc_ec_transfer_submit_cmd (transfer, NULL, crfpmoc_ssm_ec_transfer_cb, ssm);
+ }
+ 
+@@ -1482,6 +1483,8 @@ handle_ensure_keys (FpiSsm *ssm)
+   crfpmoc_ssm_start_subsm_full (self, sub, g_new0 (KeysData, 1), g_free);
+ }
+ 
++static void handle_verify_finger_up (FpiSsm *ssm);
++
+ static void
+ crfpmoc_enroll_run_state (FpiSsm *ssm, FpDevice *device)
+ {
+@@ -1491,6 +1494,15 @@ crfpmoc_enroll_run_state (FpiSsm *ssm, FpDevice *device)
+       handle_enroll_check_capacity (ssm);
+       break;
+ 
++    /*
++     * Setting the context makes the sensor recalibrate. With the finger
++     * still on it from the duplicate check fprintd does first, nothing is
++     * detected afterwards (seen with an ELAN sensor), so wait for it to go.
++     */
++    case ENROLL_FINGER_UP:
++      handle_verify_finger_up (ssm);
++      break;
++
+     case ENROLL_ENSURE_KEYS:
+       handle_ensure_keys (ssm);
+       break;
+@@ -1611,7 +1623,7 @@ handle_verify_reset (FpiSsm *ssm)
+   CrfpMocEcTransfer *transfer;
+ 
+   transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
+-                                          &p, sizeof (p), 0);
++                                          &p, sizeof (p), sizeof (struct crfpmoc_ec_response_fp_mode));
+   crfpmoc_ec_transfer_submit_cmd (transfer, NULL, crfpmoc_ssm_ec_transfer_cb, ssm);
+ }
+ 
+@@ -1841,7 +1853,7 @@ crfpmoc_clear_storage_run_state (FpiSsm *ssm, FpDevice *device)
+       data->clear_step = 0;
+ 
+       transfer = crfpmoc_ec_transfer_new_cmd (device, CRFPMOC_EC_CMD_FP_MODE, 0,
+-                                              &p, sizeof (p), 0);
++                                              &p, sizeof (p), sizeof (struct crfpmoc_ec_response_fp_mode));
+       crfpmoc_ec_transfer_submit_cmd (transfer, fpi_device_get_cancellable (device),
+                                       crfpmoc_clear_storage_cb, ssm);
+       break;
+diff --git a/libfprint/drivers/crfpmoc/crfpmoc.h b/libfprint/drivers/crfpmoc/crfpmoc.h
+index 2bc3183..478ec95 100644
+--- a/libfprint/drivers/crfpmoc/crfpmoc.h
++++ b/libfprint/drivers/crfpmoc/crfpmoc.h
+@@ -242,6 +242,42 @@ struct crfpmoc_ec_response_fp_info
+   guint32 template_version; /* version of the template format */
+ } __attribute__((packed));
+ 
++/*
++ * EC_CMD_FP_INFO v3, the only version newer FPMCU firmware (for example the
++ * HP Googlebook's) implements: the v1 fields, regrouped, and one set of frame
++ * parameters per capture type.
++ */
++#define CRFPMOC_FP_MAX_CAPTURE_TYPES 10
++
++struct crfpmoc_ec_response_fp_info_v3
++{
++  /* struct fp_sensor_info */
++  guint32 vendor_id;
++  guint32 product_id;
++  guint32 model_id;
++  guint32 version;
++  guint16 num_capture_types;
++  guint16 errors;
++  /* struct fp_template_info */
++  guint32 template_size;
++  guint16 template_max;
++  guint16 template_valid;
++  guint32 template_dirty;
++  guint32 template_version;
++  /* struct fp_image_frame_params_v2[] */
++  struct
++  {
++    guint32 frame_size;
++    guint32 image_data_offset_bytes;
++    guint32 pixel_format;
++    guint16 width;
++    guint16 height;
++    guint16 bpp;
++    guint8  fp_capture_type;
++    guint8  reserved;
++  } __attribute__((packed)) image_frame_params[CRFPMOC_FP_MAX_CAPTURE_TYPES];
++} __attribute__((packed));
++
+ /* Note: used in crfpmoc_ec_response_get_next_data_v1 */
+ struct crfpmoc_ec_response_motion_sense_fifo_info
+ {
+@@ -455,6 +491,7 @@ enum {
+  */
+ enum {
+   ENROLL_CHECK_CAPACITY,       /* Reject if on-device storage is full */
++  ENROLL_FINGER_UP,            /* Make sure the finger is not on the sensor */
+   ENROLL_ENSURE_KEYS,          /* Setup the seed and context */
+   ENROLL_SENSOR_ENROLL_SUBMIT, /* Enter enroll mode (async submit) */
+   ENROLL_SENSOR_ENROLL_DONE,   /* Enroll mode set */

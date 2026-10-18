@@ -1,0 +1,143 @@
+From 5cf34532b81a3a1fa2e879b178b75eb83b03f6f8 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 11:44:16 -0500
+Subject: [PATCH 18/20] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+ fingerprint reader
+
+The fingerprint reader is a ChromeOS fingerprint MCU (Google 18d1:5405,
+an ELAN sensor) on port 2 of the multiport USB controller, behind an NXP
+PTN3222 eUSB2 repeater at 0x4f on i2c5 (reset on TLMM 184). Its 3.3 V
+supply is switched by TLMM 22 and is always on in the stock DT. Like the
+stock DT, run usb_mp at high speed only, with both eUSB2 PHYs.
+
+The MCU takes ChromeOS EC host commands over USB (cros_ec_usb).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 82 ++++++++++++++++++-
+ 1 file changed, 79 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index b6ee8ceb2..ba557a705 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -70,6 +70,24 @@ vreg_ts_3p3: regulator-touchscreen {
+ 		regulator-always-on;
+ 	};
+ 
++	/* The fingerprint MCU on usb_mp, always on in the stock DT as well */
++	vreg_fpmcu_3p3: regulator-fpmcu {
++		compatible = "regulator-fixed";
++
++		regulator-name = "FPMCU_VDD";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 22 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&fpmcu_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++		regulator-always-on;
++	};
++
+ 	/* The USB webcam on usb_2, always on in the stock DT as well */
+ 	vreg_ucam_3p3: regulator-ucam {
+ 		compatible = "regulator-fixed";
+@@ -655,9 +673,8 @@ vreg_l15b_1p8: ldo15 {
+ 	};
+ 
+ 	/*
+-	 * L3E and L3I also feed PHYs that aren't described yet (UFS, the
+-	 * multiport eUSB2 PHYs), so keep them on rather than letting the
+-	 * PCIe 4 PHY switch them off.
++	 * L3E and L3I also feed a PHY that isn't described (UFS), so keep
++	 * them on rather than letting the PCIe 4 PHY switch them off.
+ 	 */
+ 	regulators-1 {
+ 		compatible = "qcom,pmc8380-rpmh-regulators";
+@@ -866,6 +883,21 @@ eusb5_repeater: redriver@4b {
+ 		pinctrl-0 = <&eusb5_reset_n>;
+ 		pinctrl-names = "default";
+ 	};
++
++	/* usb_mp port 2 (the fingerprint MCU) */
++	eusb6_repeater: redriver@4f {
++		compatible = "nxp,ptn3222";
++		reg = <0x4f>;
++		#phy-cells = <0>;
++
++		vdd3v3-supply = <&vreg_l13b_3p0>;
++		vdd1v8-supply = <&vreg_l4b_1p8>;
++
++		reset-gpios = <&tlmm 184 GPIO_ACTIVE_LOW>;
++
++		pinctrl-0 = <&eusb6_reset_n>;
++		pinctrl-names = "default";
++	};
+ };
+ 
+ &i2c7 {
+@@ -1413,6 +1445,35 @@ &usb_2_hsphy {
+ 	status = "okay";
+ };
+ 
++/*
++ * Internal multiport controller, USB 2.0 only as in the stock DT: the
++ * fingerprint MCU (18d1:5405) is on port 2. Port 1 has no repeater and
++ * nothing known attached; the stock DT enables its PHY all the same.
++ */
++&usb_mp {
++	phys = <&usb_mp_hsphy0>, <&usb_mp_hsphy1>;
++	phy-names = "usb2-0", "usb2-1";
++	maximum-speed = "high-speed";
++
++	status = "okay";
++};
++
++&usb_mp_hsphy0 {
++	vdd-supply = <&vreg_l2e_0p8>;
++	vdda12-supply = <&vreg_l3e_1p2>;
++
++	status = "okay";
++};
++
++&usb_mp_hsphy1 {
++	vdd-supply = <&vreg_l2e_0p8>;
++	vdda12-supply = <&vreg_l3e_1p2>;
++
++	phys = <&eusb6_repeater>;
++
++	status = "okay";
++};
++
+ /* Disabled (and its MMIO reserved) in the stock DTB as well */
+ &gic_its {
+ 	status = "disabled";
+@@ -1601,6 +1662,21 @@ eusb5_reset_n: eusb5-reset-n-state {
+ 		output-low;
+ 	};
+ 
++	eusb6_reset_n: eusb6-reset-n-state {
++		pins = "gpio184";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++		output-low;
++	};
++
++	fpmcu_reg_en: fpmcu-reg-en-state {
++		pins = "gpio22";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	ucam_reg_en: ucam-reg-en-state {
+ 		pins = "gpio206";
+ 		function = "gpio";
+-- 
+2.55.0
+

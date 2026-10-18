@@ -1,0 +1,3 @@
+# libfprint with the crfpmoc driver, from the googlebook overlay
+=sys-auth/libfprint-1.94.100::googlebook ~arm64
+sys-auth/fprintd ~arm64

@@ -1,7 +1,7 @@
 From 406777c4c0bd8d246d41d012088958fc7ad3902d Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:12 -0500
-Subject: [PATCH 04/17] phy: qcom: eusb2-repeater: Reset the repeater on init
+Subject: [PATCH 04/20] phy: qcom: eusb2-repeater: Reset the repeater on init
 
 The driver only ever sets EUSB2_RPTR_EN. On the HP Googlebook (Quartz),
 the firmware leaves the SMB2360 repeaters enabled, and depthcharge stops

@@ -42,6 +42,17 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
   `board-2.bin` entries, for the Wi-Fi board file
   ([docs/FIRMWARE.md](../docs/FIRMWARE.md)).
 
+* Fingerprint reader: a Portage overlay in `var/db/repos/googlebook`, with
+  `etc/portage/repos.conf/googlebook.conf` and
+  `etc/portage/package.accept_keywords/googlebook-fprint`. It has
+  `sys-auth/libfprint-1.94.100` with the crfpmoc driver for ChromeOS
+  fingerprint MCUs ([libfprint MR !512](https://gitlab.freedesktop.org/libfprint/libfprint/-/merge_requests/512),
+  pinned at 5644259) and our fixes for the Googlebook's newer MCU firmware.
+  After copying it, run `ebuild /var/db/repos/googlebook/sys-auth/libfprint/libfprint-1.94.100.ebuild manifest`
+  if Portage complains, then `emerge sys-auth/fprintd`, and enroll a finger
+  in GNOME Settings → Users. The kernel side needs patches 0018 to 0020 and
+  `CONFIG_CROS_EC_USB=m` (in the config fragment).
+
 Also needed on the laptop (not files here):
 
     /etc/portage/package.use/kernel:   sys-kernel/gentoo-kernel -initramfs -debug
@@ -69,6 +80,15 @@ them to one kernel version only, rename the directory to e.g.
   * touchpad and touchscreen
   * Wi-Fi, Bluetooth
   * display and GPU
+  * the ADSP (charging, battery), USB-C, audio
+  * the webcam and the fingerprint reader
+* **iommu/arm-smmu-qcom, remoteproc: qcom: pas**: run the ADSP with an
+  identity mapping when TrustZone can't provide a resource table.
+* **platform/chrome: Add a USB transport for the ChromeOS EC**: new driver
+  (`cros_ec_usb`) for MCUs that take ChromeOS EC host commands over USB, as
+  the fingerprint MCU does.
+* **gpio: cros-ec: Don't fail to probe on an EC without GPIOs**: generic fix;
+  the fingerprint MCU reports the GPIO feature without any GPIOs.
 
 ## Regenerating
 

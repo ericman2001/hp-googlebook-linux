@@ -97,6 +97,7 @@ stock device tree in `dtbo_a`.
 | eDP panel | DP3; power GPIO 70; HPD GPIO 119; enable (EL_ON3) PMC8380 #3 GPIO 4; brightness over DPCD |
 | USB-C | Left port `usb_1_ss0` (pmic-glink connector 0), right port `usb_1_ss1` (connector 1); eUSB2 repeaters in the SMB2360s; PS8830 retimers on I²C 3 (reset PM8550 GPIO 10, RF_CLK3) and I²C 7 (reset TLMM 176, RF_CLK4); orientation GPIOs 121/123. The same as the CRD's ports 0/1 |
 | Webcam | USB 2.0 UVC camera (Quanta "HP 5MP Camera", Realtek 0bda:5637) on `usb_2`, through an NXP PTN3222 eUSB2 repeater at 0x4b on I²C 5 (reset TLMM 10; L13B 3.072 V, L4B 1.8 V); PHY on L2E/L3E; camera 3.3 V switched by TLMM 206 |
+| Fingerprint | ChromeOS fingerprint MCU (Google 18d1:5405, "niedzica" firmware, ELAN sensor 0x903, 3 template slots) on `usb_mp` port 2 (`usb_mp_hsphy1`, behind a PTN3222 at 0x4f on I²C 5, reset TLMM 184); `usb_mp` runs at high speed only, as in the stock DT. MCU 3.3 V switched by TLMM 22. It speaks ChromeOS EC host commands over USB (interface ff/5a/00, Zephyr's ec_host_cmd USB backend). Pitfall: collecting the interrupt endpoint's "response ready" notification while the bulk response is still in flight wedges the MCU until a USB reset, so `cros_ec_usb` only polls it between commands. `tools/fpmcu.py` talks to it from userspace (usbfs) |
 | Audio | WCD938x reset TLMM 191 (L15B, BOB1 mic bias); WSA884x shutdown TLMM 204 (WSA bus) / 205 (WSA2 bus), L15B + L12B; DMIC0/1 on LPASS GPIO 6/7, mic bias 1 |
 | Display rails | eDP PHY on L2J (1.2 V) and L3J (0.88 V), shared with the USB QMP PHYs |
 

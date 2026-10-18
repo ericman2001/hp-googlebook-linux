@@ -34,7 +34,7 @@ the kernel patches are generic and should help any distribution.
 | DP audio | ❓ | Described (DP0/DP1), untested; reports welcome |
 | Suspend | ❌ | The SoC resets when waking from s2idle, and deep has no resume path. See [docs/SUSPEND.md](docs/SUSPEND.md). The system-wide idle state works, which lowers idle power |
 | Webcam | ✅ | USB UVC camera ("HP 5MP Camera", 0bda:5637) on the internal USB 2.0 port. MJPEG up to 2880×1800, YUYV up to 640×480 |
-| Fingerprint | ❓ | Not tried yet |
+| Fingerprint | ✅ | ChromeOS fingerprint MCU (ELAN sensor) on an internal USB port; matching happens on the MCU. Needs our `cros_ec_usb` kernel driver and libfprint's crfpmoc driver (not merged upstream yet), packaged in the `gentoo/` overlay. Enrolling and unlocking in GNOME work |
 
 > **Charging needs the ADSP.** Without it (for example in the rescue
 > initramfs, or with older patches) the battery does not charge at all. On a
@@ -46,7 +46,8 @@ the kernel patches are generic and should help any distribution.
 
 * `gentoo/`: files to install on the laptop. These are the kernel patches as
   Portage user patches, the kernel config fragment, a `kernel-install` hook
-  that flashes new kernels to slot B, and NetworkManager settings. See
+  that flashes new kernels to slot B, NetworkManager and audio settings,
+  and a small Portage overlay with libfprint for the fingerprint reader. See
   [gentoo/README.md](gentoo/README.md).
 * `tools/`: host-side tools. They build the boot images, flash slot B, extract
   stock firmware and partitions, and handle kexec testing.
@@ -74,7 +75,7 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
    fix: without it, the Chrome EC rejects every command after the first.
 2. The board device tree, `qcom/x1e80100-google-quartz.dtb`, and its later
    additions: USB 2.0, NVMe, touch, Wi-Fi, Bluetooth, display and GPU,
-   USB-C, audio and the webcam.
+   USB-C, audio, the webcam and the fingerprint reader.
 3. `phy: qcom: eusb2-repeater`: reset the repeater on init. This is a generic
    fix for a USB-C port that stays dead when a device was plugged in at boot.
 4. `drm/panel-edp`: leave the enable GPIO alone when the panel is already
@@ -86,6 +87,11 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
    run with an identity mapping when TrustZone can't provide a resource table.
    Chrome OS TrustZone can't, so without these the ADSP, and with it
    charging, never starts.
+7. `platform/chrome`: a USB transport for the ChromeOS EC protocol
+   (`cros_ec_usb`), which the fingerprint MCU uses. New; it gives
+   `/dev/cros_fp`.
+8. `gpio: cros-ec`: don't fail to probe on an EC without GPIOs, such as the
+   fingerprint MCU. Generic fix.
 
 The generic fixes are meant to go upstream.
 

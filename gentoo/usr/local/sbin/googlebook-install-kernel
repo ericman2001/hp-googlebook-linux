@@ -72,6 +72,16 @@ if [ -f "$mods/modules.builtin" ]; then
 			stale=1
 		done
 	done < "$mods/modules.builtin"
+	# A module built by hand into updates/ (while testing a driver before
+	# a kernel rebuild) would shadow the kernel's own build of it
+	for f in "$mods"/updates/*.ko*; do
+		[ -f "$f" ] || continue
+		if find "$mods/kernel" -name "$(basename "$f")" | grep -q .; then
+			echo "googlebook: removing $f, now part of the kernel"
+			rm -f "$f"
+			stale=1
+		fi
+	done
 	[ "$stale" = 0 ] || depmod -a "$kv"
 fi
 

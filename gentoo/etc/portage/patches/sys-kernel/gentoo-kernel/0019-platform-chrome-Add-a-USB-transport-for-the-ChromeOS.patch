@@ -1,0 +1,473 @@
+From d4cf29821cce23af948af78aa0c28365e0ce7ab7 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 11:44:16 -0500
+Subject: [PATCH 19/20] platform/chrome: Add a USB transport for the ChromeOS
+ EC
+
+Some ChromeOS MCUs take host commands over a vendor USB interface, as
+implemented by Zephyr's ec_host_cmd USB backend: class 0xff, subclass
+0x5a. The HP Googlebook's fingerprint MCU (18d1:5405) is one of them.
+
+A protocol v3 request goes out on the bulk OUT endpoint and the response
+comes back on the bulk IN endpoint. The interrupt IN endpoint carries
+4-byte notifications: "response ready" after every response, or "event
+pending", which is handled like the other transports' interrupt.
+
+The MCU's USB stack loses track of a command, and stops accepting
+requests until a USB reset, when the "response ready" notification is
+collected while the response is still being transferred. So the
+interrupt endpoint is only polled while no command is in flight, and
+each command collects its own notification after the response.
+
+Tested with fprintd and libfprint's crfpmoc driver (enrolling and
+matching), and with 1000 back-to-back commands.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/platform/chrome/Kconfig       |  11 +
+ drivers/platform/chrome/Makefile      |   1 +
+ drivers/platform/chrome/cros_ec_usb.c | 398 ++++++++++++++++++++++++++
+ 3 files changed, 410 insertions(+)
+ create mode 100644 drivers/platform/chrome/cros_ec_usb.c
+
+diff --git a/drivers/platform/chrome/Kconfig b/drivers/platform/chrome/Kconfig
+index ca2e84420..4a735001a 100644
+--- a/drivers/platform/chrome/Kconfig
++++ b/drivers/platform/chrome/Kconfig
+@@ -140,6 +140,17 @@ config CROS_EC_UART
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called cros_ec_uart.
+ 
++config CROS_EC_USB
++	tristate "ChromeOS Embedded Controller (USB)"
++	depends on CROS_EC && USB
++	help
++	  If you say Y here, you get support for talking to ChromeOS MCUs
++	  that take host commands over USB, such as the fingerprint MCU of
++	  the HP Googlebook.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called cros_ec_usb.
++
+ config CROS_EC_LPC
+ 	tristate "ChromeOS Embedded Controller (LPC)"
+ 	depends on CROS_EC && ACPI && (X86 || COMPILE_TEST)
+diff --git a/drivers/platform/chrome/Makefile b/drivers/platform/chrome/Makefile
+index b981a1bb5..c5deb3c8a 100644
+--- a/drivers/platform/chrome/Makefile
++++ b/drivers/platform/chrome/Makefile
+@@ -17,6 +17,7 @@ obj-$(CONFIG_CROS_TYPEC_SWITCH)		+= cros_typec_switch.o
+ obj-$(CONFIG_CROS_EC_RPMSG)		+= cros_ec_rpmsg.o
+ obj-$(CONFIG_CROS_EC_SPI)		+= cros_ec_spi.o
+ obj-$(CONFIG_CROS_EC_UART)		+= cros_ec_uart.o
++obj-$(CONFIG_CROS_EC_USB)		+= cros_ec_usb.o
+ cros_ec_lpcs-objs			:= cros_ec_lpc.o cros_ec_lpc_mec.o
+ cros-ec-typec-objs			:= cros_ec_typec.o cros_typec_vdm.o
+ ifneq ($(CONFIG_CROS_EC_TYPEC_ALTMODES),)
+diff --git a/drivers/platform/chrome/cros_ec_usb.c b/drivers/platform/chrome/cros_ec_usb.c
+new file mode 100644
+index 000000000..61ef427b8
+--- /dev/null
++++ b/drivers/platform/chrome/cros_ec_usb.c
+@@ -0,0 +1,398 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * USB transport for the ChromeOS EC
++ *
++ * Some ChromeOS MCUs, such as the fingerprint MCU in the HP Googlebook, take
++ * host commands over a vendor USB interface (Zephyr's ec_host_cmd USB
++ * backend): a protocol v3 request goes out on the bulk OUT endpoint, its
++ * response comes back on the bulk IN endpoint, and the interrupt IN endpoint
++ * carries 4-byte notifications, either "response ready" or "event pending".
++ *
++ * The MCU queues a "response ready" notification after every response, and
++ * its USB stack (seen on the Googlebook's "niedzica" firmware) loses track of
++ * a command when that notification is collected while the response is still
++ * being transferred: it then stops accepting requests until a USB reset. So
++ * the interrupt endpoint is polled only while no command is in flight, and
++ * each command collects its own notification after the response.
++ */
++
++#include <linux/module.h>
++#include <linux/platform_data/cros_ec_commands.h>
++#include <linux/platform_data/cros_ec_proto.h>
++#include <linux/slab.h>
++#include <linux/usb.h>
++#include <linux/workqueue.h>
++
++#include "cros_ec.h"
++
++#define USB_SUBCLASS_GOOGLE_EC_HOST_CMD	0x5a
++#define USB_PROTOCOL_GOOGLE_EC_HOST_CMD	0x00
++
++#define CROS_EC_USB_IRQ_EVENT		0
++#define CROS_EC_USB_IRQ_RESP_READY	1
++
++#define CROS_EC_USB_INT_SIZE		4
++#define CROS_EC_USB_BUF_SIZE		2048
++#define CROS_EC_USB_TIMEOUT_MS		1000
++#define CROS_EC_USB_INT_TIMEOUT_MS	100
++
++/**
++ * struct cros_ec_usb - information about an EC over USB
++ *
++ * @udev: USB device
++ * @intf: USB interface we are bound to
++ * @ec_dev: ChromeOS EC device
++ * @bulk_out: bulk OUT endpoint, for requests
++ * @bulk_in: bulk IN endpoint, for responses
++ * @int_pipe: interrupt IN endpoint, for notifications
++ * @int_urb: interrupt URB, submitted while no command is in flight
++ * @int_buf: buffer of @int_urb
++ * @int_sync_buf: buffer for reading notifications during a command
++ * @xfer_buf: DMA-safe buffer for requests and responses
++ * @event_work: work to fetch pending events
++ * @probe_done: events are only processed once the EC is registered
++ * @has_pending_event: an event was signalled before probing finished
++ */
++struct cros_ec_usb {
++	struct usb_device *udev;
++	struct usb_interface *intf;
++	struct cros_ec_device *ec_dev;
++	unsigned int bulk_out;
++	unsigned int bulk_in;
++	unsigned int int_pipe;
++	struct urb *int_urb;
++	u8 *int_buf;
++	u8 *int_sync_buf;
++	u8 *xfer_buf;
++	struct work_struct event_work;
++	bool probe_done;
++	bool has_pending_event;
++};
++
++/*
++ * Only used for the old EC protocol versions, which this transport doesn't
++ * support.
++ */
++static int cros_ec_cmd_xfer_usb(struct cros_ec_device *ec_dev,
++				struct cros_ec_command *ec_msg)
++{
++	return -EINVAL;
++}
++
++static void cros_ec_usb_signal_event(struct cros_ec_usb *ec_usb)
++{
++	ec_usb->ec_dev->last_event_time = cros_ec_get_time_ns();
++	if (READ_ONCE(ec_usb->probe_done))
++		schedule_work(&ec_usb->event_work);
++	else
++		WRITE_ONCE(ec_usb->has_pending_event, true);
++}
++
++static int cros_ec_usb_transfer(struct cros_ec_device *ec_dev,
++				struct cros_ec_command *ec_msg)
++{
++	struct cros_ec_usb *ec_usb = ec_dev->priv;
++	struct ec_host_response *response;
++	int len, got, actual, total, ret, i;
++	u8 sum;
++
++	ec_msg->result = 0;
++	len = cros_ec_prepare_tx(ec_dev, ec_msg);
++	if (len < 0)
++		return len;
++	if (len > CROS_EC_USB_BUF_SIZE)
++		return -EMSGSIZE;
++
++	memcpy(ec_usb->xfer_buf, ec_dev->dout, len);
++	ret = usb_bulk_msg(ec_usb->udev, ec_usb->bulk_out, ec_usb->xfer_buf,
++			   len, &actual, CROS_EC_USB_TIMEOUT_MS);
++	if (ret) {
++		dev_err(ec_dev->dev, "sending command 0x%x failed: %d\n",
++			ec_msg->command, ret);
++		return ret;
++	}
++
++	/*
++	 * Read one packet to learn the response length, then exactly the
++	 * rest, so that a response that is a multiple of the packet size
++	 * needs no zero-length packet. Skip a stray zero-length packet.
++	 */
++	for (i = 0, got = 0; i < 2 && !got; i++) {
++		ret = usb_bulk_msg(ec_usb->udev, ec_usb->bulk_in,
++				   ec_usb->xfer_buf,
++				   usb_maxpacket(ec_usb->udev, ec_usb->bulk_in),
++				   &got, CROS_EC_USB_TIMEOUT_MS);
++		if (ret) {
++			dev_err(ec_dev->dev,
++				"reading response to 0x%x failed: %d\n",
++				ec_msg->command, ret);
++			return ret;
++		}
++	}
++	if (got < sizeof(*response)) {
++		dev_err(ec_dev->dev, "short response (%d bytes)\n", got);
++		return -EBADMSG;
++	}
++
++	response = (struct ec_host_response *)ec_usb->xfer_buf;
++	total = sizeof(*response) + response->data_len;
++	if (total > CROS_EC_USB_BUF_SIZE || total > ec_dev->din_size) {
++		dev_err(ec_dev->dev, "response too long (%d bytes)\n", total);
++		return -EMSGSIZE;
++	}
++	if (total > got) {
++		ret = usb_bulk_msg(ec_usb->udev, ec_usb->bulk_in,
++				   ec_usb->xfer_buf + got, total - got,
++				   &actual, CROS_EC_USB_TIMEOUT_MS);
++		if (ret || actual != total - got) {
++			dev_err(ec_dev->dev,
++				"reading response to 0x%x failed: %d (%d of %d bytes)\n",
++				ec_msg->command, ret, got + actual, total);
++			return ret ?: -EBADMSG;
++		}
++	}
++	memcpy(ec_dev->din, ec_usb->xfer_buf, total);
++
++	/* check response error code */
++	response = (struct ec_host_response *)ec_dev->din;
++	ec_msg->result = response->result;
++
++	ret = cros_ec_check_result(ec_dev, ec_msg);
++	if (ret)
++		return ret;
++
++	if (response->data_len > ec_msg->insize) {
++		dev_err(ec_dev->dev, "packet too long (%d bytes, expected %d)",
++			response->data_len, ec_msg->insize);
++		return -EMSGSIZE;
++	}
++
++	/* copy response packet payload and compute checksum */
++	memcpy(ec_msg->data, ec_dev->din + sizeof(*response),
++	       response->data_len);
++
++	sum = 0;
++	for (i = 0; i < total; i++)
++		sum += ec_dev->din[i];
++
++	if (sum) {
++		dev_err(ec_dev->dev, "bad packet checksum, calculated %x\n",
++			sum);
++		return -EBADMSG;
++	}
++
++	return response->data_len;
++}
++
++/*
++ * Collect the "response ready" notification of the command just sent,
++ * noting any event notification queued before it.
++ */
++static void cros_ec_usb_collect_notifications(struct cros_ec_usb *ec_usb)
++{
++	int actual, ret, i;
++
++	for (i = 0; i < 3; i++) {
++		ret = usb_interrupt_msg(ec_usb->udev, ec_usb->int_pipe,
++					ec_usb->int_sync_buf,
++					CROS_EC_USB_INT_SIZE, &actual,
++					CROS_EC_USB_INT_TIMEOUT_MS);
++		if (ret || actual < 1)
++			break;
++		if (ec_usb->int_sync_buf[0] == CROS_EC_USB_IRQ_RESP_READY)
++			break;
++		if (ec_usb->int_sync_buf[0] == CROS_EC_USB_IRQ_EVENT)
++			cros_ec_usb_signal_event(ec_usb);
++	}
++}
++
++static int cros_ec_pkt_xfer_usb(struct cros_ec_device *ec_dev,
++				struct cros_ec_command *ec_msg)
++{
++	struct cros_ec_usb *ec_usb = ec_dev->priv;
++	int ret;
++
++	usb_kill_urb(ec_usb->int_urb);
++
++	ret = cros_ec_usb_transfer(ec_dev, ec_msg);
++	cros_ec_usb_collect_notifications(ec_usb);
++
++	if (usb_submit_urb(ec_usb->int_urb, GFP_KERNEL))
++		dev_err(ec_dev->dev, "resubmitting interrupt URB failed\n");
++
++	return ret;
++}
++
++static void cros_ec_usb_event_work(struct work_struct *work)
++{
++	struct cros_ec_usb *ec_usb = container_of(work, struct cros_ec_usb,
++						  event_work);
++
++	cros_ec_irq_thread(0, ec_usb->ec_dev);
++}
++
++static void cros_ec_usb_int_callback(struct urb *urb)
++{
++	struct cros_ec_usb *ec_usb = urb->context;
++	int ret;
++
++	switch (urb->status) {
++	case 0:
++		break;
++	case -ECONNRESET:
++	case -ENOENT:
++	case -ESHUTDOWN:
++		return;
++	default:
++		dev_dbg(&ec_usb->intf->dev, "interrupt status %d\n",
++			urb->status);
++		goto resubmit;
++	}
++
++	/* A late "response ready" needs nothing */
++	if (urb->actual_length >= 1 &&
++	    ec_usb->int_buf[0] == CROS_EC_USB_IRQ_EVENT)
++		cros_ec_usb_signal_event(ec_usb);
++
++resubmit:
++	ret = usb_submit_urb(urb, GFP_ATOMIC);
++	if (ret && ret != -EPERM)
++		dev_err(&ec_usb->intf->dev,
++			"resubmitting interrupt URB failed: %d\n", ret);
++}
++
++static int cros_ec_usb_probe(struct usb_interface *intf,
++			     const struct usb_device_id *id)
++{
++	struct usb_endpoint_descriptor *ep_in, *ep_out, *ep_int;
++	struct usb_device *udev = interface_to_usbdev(intf);
++	struct device *dev = &intf->dev;
++	struct cros_ec_device *ec_dev;
++	struct cros_ec_usb *ec_usb;
++	int ret;
++
++	ret = usb_find_common_endpoints(intf->cur_altsetting, &ep_in, &ep_out,
++					&ep_int, NULL);
++	if (ret)
++		return ret;
++
++	ec_dev = cros_ec_device_alloc(dev);
++	if (!ec_dev)
++		return -ENOMEM;
++
++	ec_usb = devm_kzalloc(dev, sizeof(*ec_usb), GFP_KERNEL);
++	if (!ec_usb)
++		return -ENOMEM;
++
++	ec_usb->xfer_buf = devm_kmalloc(dev, CROS_EC_USB_BUF_SIZE, GFP_KERNEL);
++	ec_usb->int_buf = devm_kmalloc(dev, CROS_EC_USB_INT_SIZE, GFP_KERNEL);
++	ec_usb->int_sync_buf = devm_kmalloc(dev, CROS_EC_USB_INT_SIZE,
++					    GFP_KERNEL);
++	if (!ec_usb->xfer_buf || !ec_usb->int_buf || !ec_usb->int_sync_buf)
++		return -ENOMEM;
++
++	ec_usb->udev = udev;
++	ec_usb->intf = intf;
++	ec_usb->ec_dev = ec_dev;
++	ec_usb->bulk_out = usb_sndbulkpipe(udev, usb_endpoint_num(ep_out));
++	ec_usb->bulk_in = usb_rcvbulkpipe(udev, usb_endpoint_num(ep_in));
++	ec_usb->int_pipe = usb_rcvintpipe(udev, usb_endpoint_num(ep_int));
++	INIT_WORK(&ec_usb->event_work, cros_ec_usb_event_work);
++
++	ec_usb->int_urb = usb_alloc_urb(0, GFP_KERNEL);
++	if (!ec_usb->int_urb)
++		return -ENOMEM;
++	usb_fill_int_urb(ec_usb->int_urb, udev, ec_usb->int_pipe,
++			 ec_usb->int_buf, CROS_EC_USB_INT_SIZE,
++			 cros_ec_usb_int_callback, ec_usb, ep_int->bInterval);
++
++	ec_dev->priv = ec_usb;
++	ec_dev->cmd_xfer = cros_ec_cmd_xfer_usb;
++	ec_dev->pkt_xfer = cros_ec_pkt_xfer_usb;
++	ec_dev->phys_name = dev_name(dev);
++	usb_set_intfdata(intf, ec_dev);
++
++	ret = usb_submit_urb(ec_usb->int_urb, GFP_KERNEL);
++	if (ret)
++		goto err_free_urb;
++
++	ret = cros_ec_register(ec_dev);
++	if (ret)
++		goto err_kill_urb;
++
++	WRITE_ONCE(ec_usb->probe_done, true);
++	if (READ_ONCE(ec_usb->has_pending_event))
++		schedule_work(&ec_usb->event_work);
++
++	return 0;
++
++err_kill_urb:
++	usb_kill_urb(ec_usb->int_urb);
++	cancel_work_sync(&ec_usb->event_work);
++err_free_urb:
++	usb_free_urb(ec_usb->int_urb);
++	return ret;
++}
++
++static void cros_ec_usb_disconnect(struct usb_interface *intf)
++{
++	struct cros_ec_device *ec_dev = usb_get_intfdata(intf);
++	struct cros_ec_usb *ec_usb = ec_dev->priv;
++
++	cros_ec_unregister(ec_dev);
++	usb_kill_urb(ec_usb->int_urb);
++	cancel_work_sync(&ec_usb->event_work);
++	usb_free_urb(ec_usb->int_urb);
++}
++
++static int cros_ec_usb_suspend(struct usb_interface *intf, pm_message_t message)
++{
++	struct cros_ec_device *ec_dev = usb_get_intfdata(intf);
++	struct cros_ec_usb *ec_usb = ec_dev->priv;
++	int ret;
++
++	ret = cros_ec_suspend(ec_dev);
++	if (ret)
++		return ret;
++
++	usb_kill_urb(ec_usb->int_urb);
++	cancel_work_sync(&ec_usb->event_work);
++
++	return 0;
++}
++
++static int cros_ec_usb_resume(struct usb_interface *intf)
++{
++	struct cros_ec_device *ec_dev = usb_get_intfdata(intf);
++	struct cros_ec_usb *ec_usb = ec_dev->priv;
++	int ret;
++
++	ret = usb_submit_urb(ec_usb->int_urb, GFP_NOIO);
++	if (ret)
++		dev_err(&intf->dev, "resubmitting interrupt URB failed: %d\n",
++			ret);
++
++	return cros_ec_resume(ec_dev);
++}
++
++static const struct usb_device_id cros_ec_usb_id_table[] = {
++	{ USB_VENDOR_AND_INTERFACE_INFO(0x18d1, USB_CLASS_VENDOR_SPEC,
++					USB_SUBCLASS_GOOGLE_EC_HOST_CMD,
++					USB_PROTOCOL_GOOGLE_EC_HOST_CMD) },
++	{ }
++};
++MODULE_DEVICE_TABLE(usb, cros_ec_usb_id_table);
++
++static struct usb_driver cros_ec_usb_driver = {
++	.name		= "cros-ec-usb",
++	.probe		= cros_ec_usb_probe,
++	.disconnect	= cros_ec_usb_disconnect,
++	.suspend	= cros_ec_usb_suspend,
++	.resume		= cros_ec_usb_resume,
++	.reset_resume	= cros_ec_usb_resume,
++	.id_table	= cros_ec_usb_id_table,
++};
++module_usb_driver(cros_ec_usb_driver);
++
++MODULE_LICENSE("GPL");
++MODULE_DESCRIPTION("ChromeOS EC multi function device (USB)");
+-- 
+2.55.0
+

@@ -1,0 +1,34 @@
+From 44a215bfa27efaeb39444fc5fdb7558932005d3f Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 11:44:16 -0500
+Subject: [PATCH 20/20] gpio: cros-ec: Don't fail to probe on an EC without
+ GPIOs
+
+cros_ec_dev adds the GPIO cell to any EC that reports the GPIO feature,
+and some, such as the HP Googlebook's fingerprint MCU, report it with no
+GPIOs. Registering an empty gpio_chip then fails with -EINVAL and an
+error in the log. Return -ENODEV instead, quietly.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/gpio/gpio-cros-ec.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/gpio/gpio-cros-ec.c b/drivers/gpio/gpio-cros-ec.c
+index b48b684d8..4f2f79564 100644
+--- a/drivers/gpio/gpio-cros-ec.c
++++ b/drivers/gpio/gpio-cros-ec.c
+@@ -174,6 +174,10 @@ static int cros_ec_gpio_probe(struct platform_device *pdev)
+ 		return ngpios;
+ 	}
+ 
++	/* Some ECs, such as fingerprint MCUs, have the feature but no GPIOs */
++	if (!ngpios)
++		return -ENODEV;
++
+ 	gc = devm_kzalloc(dev, sizeof(*gc), GFP_KERNEL);
+ 	if (!gc)
+ 		return -ENOMEM;
+-- 
+2.55.0
+
