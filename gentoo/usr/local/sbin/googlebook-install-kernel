@@ -57,6 +57,24 @@ dtb=${GOOGLEBOOK_DTB:-/lib/modules/$kv/dtb/qcom/x1e80100-google-quartz.dtb}
 [ -f "$image" ] || { echo "googlebook: kernel image $image missing" >&2; exit 1; }
 [ -f "$dtb" ] || { echo "googlebook: $dtb missing" >&2; exit 1; }
 
+# Reinstalling the same kernel version can leave modules of the previous
+# build behind. If they are now built in, depmod resolves symbols to the
+# stale module, which then can't load, and neither can whatever uses it
+# (seen with typec.ko: no retimers, and no display). Remove them.
+mods=/lib/modules/$kv
+if [ -f "$mods/modules.builtin" ]; then
+	stale=0
+	while read -r m; do
+		for f in "$mods/$m" "$mods/$m.gz" "$mods/$m.xz" "$mods/$m.zst"; do
+			[ -f "$f" ] || continue
+			echo "googlebook: removing $f, now built in"
+			rm -f "$f"
+			stale=1
+		done
+	done < "$mods/modules.builtin"
+	[ "$stale" = 0 ] || depmod -a "$kv"
+fi
+
 work=$(mktemp -d /tmp/googlebook-kernel.XXXXXX)
 trap 'rm -rf "$work"' EXIT
 
