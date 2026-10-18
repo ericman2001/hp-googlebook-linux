@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Print the battery state from the Chrome EC (via /dev/cros_ec).
+"""Show what can be read about the battery without the ADSP.
 
-Linux has no battery driver on this laptop yet (that needs the ADSP), but the
-EC runs the fuel gauge, so this shows charge, current and charger state.
+* The Chrome EC's battery data (EC_CMD_BATTERY_GET_DYNAMIC). On this laptop
+  the EC has no fuel gauge of its own: it only mirrors what the ADSP reports.
+  Under Linux, with no ADSP running, this is a STALE snapshot from the
+  firmware's charging applet at boot.
+* The live charge status and charge current of the two SMB2360 chargers
+  (SPMI SIDs 7 and 0xa), read like coreboot does. This needs debugfs
+  (/sys/kernel/debug/regmap/1-07 and 1-0a).
 """
 import fcntl
 import os
 import struct
 
-EC_CMD_BATTERY_GET_STATIC = 0x0600
 EC_CMD_BATTERY_GET_DYNAMIC = 0x0601
 CROS_EC_DEV_IOCXCMD = 0xc014ec00  # _IOWR(0xec, 0, struct cros_ec_command)
+SCHG_CHGR_STATUS_REG = 0x2606     # bits 2:0, 3 = fast charge
+SCHG_CHGR_CHARGING_FCC = 0x260a   # charge current, 50 mA steps
 
 
 def ec_cmd(fd, cmd, version, data, insize):
@@ -23,15 +29,33 @@ def ec_cmd(fd, cmd, version, data, insize):
     return bytes(buf[20:20 + insize])
 
 
+def smb_regs(sid):
+    regs = {}
+    with open(f'/sys/kernel/debug/regmap/1-{sid:02x}/registers') as f:
+        for line in f:
+            addr, _, val = line.partition(':')
+            a = int(addr, 16)
+            if a in (SCHG_CHGR_STATUS_REG, SCHG_CHGR_CHARGING_FCC):
+                regs[a] = int(val, 16)
+            if a > SCHG_CHGR_CHARGING_FCC:
+                break
+    return regs
+
+
 fd = os.open('/dev/cros_ec', os.O_RDWR)
 d = ec_cmd(fd, EC_CMD_BATTERY_GET_DYNAMIC, 0, bytes([0]), 14)
-volt, cur, rem, full, flags, dvolt, dcur = struct.unpack('<hhhhhhh', d)
+volt, cur, rem, full, flags, _, _ = struct.unpack('<hhhhhhh', d)
 pct = 100 * rem / full if full > 0 else 0
-state = []
-if flags & 1: state.append('AC present')
-if flags & 2: state.append('battery present')
-if flags & 4: state.append('discharging')
-if flags & 8: state.append('charging')
-if flags & 16: state.append('level critical')
-print(f'battery {pct:.0f}% ({rem}/{full} mAh), {volt} mV, {cur:+d} mA'
-      f' (charger asks for {dvolt} mV / {dcur} mA): {", ".join(state)}')
+print(f'EC snapshot (stale without the ADSP): {pct:.0f}% ({rem}/{full} mAh), '
+      f'{volt} mV, {cur:+d} mA, flags {flags:#x}')
+
+for name, sid in (('SMB1', 0x07), ('SMB2', 0x0a)):
+    try:
+        r = smb_regs(sid)
+    except OSError as e:
+        print(f'{name}: cannot read charger registers ({e.strerror}; mount debugfs?)')
+        continue
+    st = r[SCHG_CHGR_STATUS_REG] & 7
+    ma = r[SCHG_CHGR_CHARGING_FCC] * 50
+    print(f'{name} (live): status {st}{" (fast charge)" if st == 3 else " (not charging)" if ma == 0 else ""}, '
+          f'charge current {ma} mA')

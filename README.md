@@ -24,17 +24,19 @@ the kernel patches are generic and should help any distribution.
 | Wi-Fi (WCN7850, Wi-Fi 7) | ✅ | 6 GHz / 160 MHz tested; needs a board file, see docs |
 | Bluetooth | ✅ | Same WCN7850 |
 | USB-C (both ports) | ⚠️ USB 2.0 only | USB 3 / DP alt mode need the ADSP |
-| **Charging** | ⚠️ limited | ~21 W reaches the battery; heavy load drains it. Full charging needs the ADSP |
-| Battery status | ⚠️ via EC only | `tools/ecbatt.py` reads the Chrome EC; no power_supply device yet |
+| **Charging** | ❌ | The battery does not charge under Linux (0 mA). The adapter powers the system, and heavy load drains the battery. Needs the ADSP |
+| Battery status | ❌ | The EC only mirrors the ADSP, so its values are stale. `tools/ecbatt.py` shows the live charger status |
 | Audio | ❌ | Needs the ADSP |
 | Suspend, webcam, fingerprint | ❓ | Not tried yet |
 
 > **Warning: charging.** Until the ADSP (audio DSP) runs under Linux, the
-> charger only delivers about 21 W to the battery. That is fine at idle, but a
-> full-load job such as a 12-core kernel build drains the battery even on a
-> 60 W charger. One flattened the battery during bring-up. Watch
-> `tools/ecbatt.py` during long builds, use fewer jobs, and charge with the
-> laptop **powered off** for full speed: the firmware then charges normally.
+> battery does **not charge**: both chargers report status 7 and 0 mA. The
+> adapter still powers the system, but a full-load job such as a 12-core
+> kernel build draws more than it supplies, and the battery makes up the
+> difference. One flattened the battery during bring-up, even on a 60 W
+> charger. Charge with the laptop **powered off**: the firmware then charges
+> normally. The Chrome EC's battery numbers are stale under Linux. The EC has
+> no fuel gauge of its own and only mirrors what the ADSP reports.
 
 ## Layout
 

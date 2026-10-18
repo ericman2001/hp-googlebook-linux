@@ -58,8 +58,13 @@ stock device tree in `dtbo_a`.
   there are no components to match.
 * **Charging is done by the ADSP.** coreboot runs a charging applet on the
   ADSP and then resets it before booting the OS, which is expected to load
-  the full ADSP firmware. Without it, charging stays limited to about 21 W
-  into the battery, so heavy load drains it even when plugged in.
+  the full ADSP firmware. Without it the battery does not charge: the
+  SMB2360 charge status (`0x2606` bits 2:0) is 7 and the charge current
+  (`0x260A`, 50 mA steps) is 0. The adapter still powers the system, so heavy
+  load drains the battery. The Chrome EC has no fuel gauge here. Its battery
+  data (`EC_CMD_BATTERY_GET_DYNAMIC`, memmap `0x40`) is pushed by the ADSP,
+  so under Linux it is a stale snapshot from boot. The EC also does not
+  support `CHARGE_STATE` or `USB_PD_POWER_INFO`.
 
 ## Board map
 
