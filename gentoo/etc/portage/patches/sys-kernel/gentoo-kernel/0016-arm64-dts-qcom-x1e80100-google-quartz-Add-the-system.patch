@@ -1,0 +1,53 @@
+From 6fa1b7029ded6c38c56dfc02b778080e27ff5a28 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 04:01:10 -0500
+Subject: [PATCH 16/16] arm64: dts: qcom: x1e80100-google-quartz: Add the
+ system-wide idle state
+
+hamoa.dtsi leaves the system power domain's idle states as a TODO. The
+stock Quartz DT has one, with the same PSCI parameter and latencies as
+domain_ss3 on SM8750 and Glymur, and Google's firmware implements it:
+with it, the SoC spends most of its idle time in system sleep (42 s of
+the first 75 s after boot).
+
+s2idle still resets the SoC on wake, with or without this state.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index 4a4af4de9..ad08bc5db 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -694,6 +694,26 @@ vreg_l2d_0p9: ldo2 {
+ 	};
+ };
+ 
++/*
++ * The system-wide idle state hamoa.dtsi leaves as a TODO. Google's
++ * firmware implements it (the stock DT has it, with the same parameters
++ * as domain_ss3 on SM8750 and Glymur), and without it the SoC never
++ * reaches system sleep in s2idle.
++ */
++&{/cpus/domain-idle-states} {
++	domain_ss3: domain-sleep-0 {
++		compatible = "domain-idle-state";
++		arm,psci-suspend-param = <0x0200c354>;
++		entry-latency-us = <2800>;
++		exit-latency-us = <4400>;
++		min-residency-us = <10150>;
++	};
++};
++
++&system_pd {
++	domain-idle-states = <&domain_ss3>;
++};
++
+ &apss_watchdog {
+ 	status = "okay";
+ };
+-- 
+2.55.0
+

@@ -1,7 +1,7 @@
 From 39f070f671fb7fcbd3760fe138487b3cd89c0dc8 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 02:47:18 -0500
-Subject: [PATCH 15/15] arm64: dts: qcom: x1e80100-google-quartz: Enable audio
+Subject: [PATCH 15/16] arm64: dts: qcom: x1e80100-google-quartz: Enable audio
 
 Quartz uses the CRD's audio design (the stock sound card is even named
 "hamoa-x1e80100-crd-wsa884x-snd-card"): a WCD938x headset codec on

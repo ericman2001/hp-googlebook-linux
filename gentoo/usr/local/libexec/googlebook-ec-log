@@ -1,0 +1,9 @@
+#!/bin/sh
+# Save the Chrome EC console log (it holds the EC side of the last power
+# event, e.g. a failed suspend). The debugfs file streams, so stop after 3 s.
+f=/sys/kernel/debug/cros_ec/console_log
+for i in $(seq 50); do [ -r $f ] && break; sleep 0.2; done
+mkdir -p /var/log/ec
+timeout 3 cat $f > /var/log/ec/boot-$(date +%Y%m%d-%H%M%S).log
+ls -t /var/log/ec/boot-*.log | tail -n +21 | xargs -r rm --
+exit 0

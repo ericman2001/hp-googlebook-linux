@@ -1,0 +1,12 @@
+[Unit]
+Description=Save the Chrome EC console log early at boot (suspend debugging)
+DefaultDependencies=no
+After=sys-kernel-debug.mount local-fs.target
+Requires=sys-kernel-debug.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/googlebook-ec-log
+
+[Install]
+WantedBy=sysinit.target

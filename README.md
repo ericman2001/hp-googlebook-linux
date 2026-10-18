@@ -32,7 +32,8 @@ the kernel patches are generic and should help any distribution.
 | Internal mics (2× DMIC) | ⚠️ | Work, with an occasional click on one mic (see docs/HARDWARE.md) |
 | Headphone jack | ✅ | WCD938x; the headset mic isn't tested yet |
 | DP audio | ❓ | Described (DP0/DP1), not tested yet |
-| Suspend, webcam, fingerprint | ❓ | Not tried yet |
+| Suspend | ❌ | The SoC resets when waking from s2idle, and deep has no resume path. See [docs/SUSPEND.md](docs/SUSPEND.md). The system-wide idle state works, which lowers idle power |
+| Webcam, fingerprint | ❓ | Not tried yet |
 
 > **Charging needs the ADSP.** Without it (for example in the rescue
 > initramfs, or with older patches) the battery does not charge at all. On a
@@ -51,8 +52,9 @@ the kernel patches are generic and should help any distribution.
 * `initramfs/`: the busybox rescue initramfs. It switches to the root
   filesystem, or gives a rescue shell (optionally over the network).
 * `config/`: kernel config fragments for a host-built kernel.
-* `docs/`: [installation](docs/INSTALL.md), [firmware](docs/FIRMWARE.md) and
-  [hardware notes and pitfalls](docs/HARDWARE.md).
+* `docs/`: [installation](docs/INSTALL.md), [firmware](docs/FIRMWARE.md),
+  [hardware notes and pitfalls](docs/HARDWARE.md) and the
+  [suspend investigation](docs/SUSPEND.md).
 
 Not in this repository, because they are device-specific or not
 redistributable:
@@ -76,7 +78,9 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
 4. `drm/panel-edp`: leave the enable GPIO alone when the panel is already
    powered. This is a generic fix: Samsung OLEDs otherwise stay black after the
    firmware-to-Linux handover.
-5. `iommu/arm-smmu-qcom` and `remoteproc: qcom: pas`: let the X1E80100 ADSP
+5. The system-wide PSCI idle state that `hamoa.dtsi` leaves as a TODO
+   (patch 0016), from the stock DT.
+6. `iommu/arm-smmu-qcom` and `remoteproc: qcom: pas`: let the X1E80100 ADSP
    run with an identity mapping when TrustZone can't provide a resource table.
    Chrome OS TrustZone can't, so without these the ADSP, and with it
    charging, never starts.
