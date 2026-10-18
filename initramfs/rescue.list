@@ -1,0 +1,21 @@
+# gen_init_cpio spec for the busybox rescue initramfs (paths relative to initramfs/)
+dir /bin 0755 0 0
+dir /dev 0755 0 0
+nod /dev/console 0600 0 0 c 5 1
+dir /etc 0755 0 0
+dir /proc 0755 0 0
+dir /root 0700 0 0
+dir /sys 0755 0 0
+file /bin/busybox ../src/busybox-1.38.0/busybox 0755 0 0
+slink /bin/sh busybox 0777 0 0
+file /bin/diag diag 0755 0 0
+file /bin/ecprobe ecprobe 0755 0 0
+file /bin/ecspi ecspi 0755 0 0
+file /bin/netshell netshell 0755 0 0
+file /bin/gbkexec gbkexec 0755 0 0
+file /bin/kexec ../src/kexec-tools-2.0.32/build/sbin/kexec 0755 0 0
+dir /usr 0755 0 0
+dir /usr/share 0755 0 0
+dir /usr/share/udhcpc 0755 0 0
+file /usr/share/udhcpc/default.script udhcpc.script 0755 0 0
+file /init rescue-init 0755 0 0

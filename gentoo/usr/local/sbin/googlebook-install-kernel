@@ -1,0 +1,84 @@
+#!/bin/sh
+# Pack an installed kernel into the HP Googlebook's Android boot images and
+# write them to slot B, the slot depthcharge boots Gentoo from.
+#
+# usage: googlebook-install-kernel <kernel version> [<kernel image>]
+#        googlebook-install-kernel --rollback
+#
+# GOOGLEBOOK_DTB=<file> uses that DTB instead of the kernel's own (for
+# testing device tree changes with an installed kernel).
+#
+# Called by /etc/kernel/install.d/90-googlebook.install on "kernel-install
+# add". Only boot_b, init_boot_b, vendor_boot_b, dtbo_b and vbmeta_b on the
+# internal NVMe are written, each found by its exact GPT name, size-checked
+# and verified after writing. The previously flashed images are kept in
+# /var/lib/googlebook/previous for --rollback.
+set -eu
+
+share=/usr/local/share/googlebook
+state=/var/lib/googlebook
+parts="boot init_boot vendor_boot dtbo vbmeta"
+
+partdev() {
+	for u in /sys/class/block/nvme0n1p*/uevent; do
+		if grep -qx "PARTNAME=$1" "$u"; then
+			echo "/dev/$(basename "$(dirname "$u")")"
+			return
+		fi
+	done
+	echo "googlebook: no partition named $1" >&2
+	exit 1
+}
+
+flash() {	# <dir with $p.img files>
+	for p in $parts; do
+		dev=$(partdev "${p}_b")
+		img=$1/$p.img
+		size=$(stat -c %s "$img")
+		[ "$(( $(cat "/sys/class/block/${dev#/dev/}/size") * 512 ))" -ge "$size" ] ||
+			{ echo "googlebook: $p.img does not fit ${p}_b" >&2; exit 1; }
+		dd if="$img" of="$dev" bs=1M conv=fsync status=none
+		[ "$(head -c "$size" "$dev" | md5sum)" = "$(md5sum < "$img")" ] ||
+			{ echo "googlebook: verifying ${p}_b FAILED" >&2; exit 1; }
+		echo "googlebook: ${p}_b ($dev) written and verified"
+	done
+}
+
+if [ "${1:-}" = --rollback ]; then
+	flash "$state/previous"
+	cp "$state/previous/kernel" "$state/kernel" 2>/dev/null || true
+	echo "googlebook: rolled back to $(cat "$state/kernel" 2>/dev/null || echo 'the previous images')"
+	exit 0
+fi
+
+kv=$1
+image=${2:-/lib/modules/$kv/vmlinuz}
+dtb=${GOOGLEBOOK_DTB:-/lib/modules/$kv/dtb/qcom/x1e80100-google-quartz.dtb}
+[ -f "$image" ] || { echo "googlebook: kernel image $image missing" >&2; exit 1; }
+[ -f "$dtb" ] || { echo "googlebook: $dtb missing" >&2; exit 1; }
+
+work=$(mktemp -d /tmp/googlebook-kernel.XXXXXX)
+trap 'rm -rf "$work"' EXIT
+
+# depthcharge wants a legacy-LZ4 compressed arm64 Image, like the stock kernel
+python3 -I /usr/local/lib/googlebook/unpack-kernel.py "$image" "$work/Image"
+lz4 -l -12 -q "$work/Image" "$work/Image.lz4"
+
+py="python3 -I /usr/local/lib/googlebook/mkimages.py"
+$py boot --kernel "$work/Image.lz4" -o "$work/boot.img" > /dev/null
+$py init_boot --ramdisk "$share/rescue.cpio" -o "$work/init_boot.img" > /dev/null
+$py vendor_boot --cmdline "$(cat /etc/googlebook/cmdline)" \
+	--ramdisk "$share/vendor.cpio" -o "$work/vendor_boot.img" > /dev/null
+$py dtbo --base "$dtb" --overlay "$share/placeholder.dtbo" -o "$work/dtbo.img" > /dev/null
+cp "$share/vbmeta.img" "$work/vbmeta.img"
+
+# Keep what is flashed now, for --rollback
+mkdir -p "$state/previous"
+for p in $parts; do
+	dd if="$(partdev "${p}_b")" of="$state/previous/$p.img" bs=1M status=none
+done
+cp "$state/kernel" "$state/previous/kernel" 2>/dev/null || true
+
+flash "$work"
+echo "$kv" > "$state/kernel"
+echo "googlebook: slot B now boots $kv"

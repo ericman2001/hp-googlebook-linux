@@ -1,0 +1,1 @@
+console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=7 rdinit=/init root=LABEL=gentoo

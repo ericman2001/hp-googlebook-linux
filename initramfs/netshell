@@ -1,0 +1,6 @@
+#!/bin/sh
+# Start an UNAUTHENTICATED root shell on telnet port 23, for bring-up on a
+# trusted LAN only. Stop it with: killall telnetd
+
+telnetd -l /bin/sh -p 23 && echo "telnet shell listening on port 23:"
+ip -4 -o addr show scope global | awk '{print "  " $2 ": " $4}'

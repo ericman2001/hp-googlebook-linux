@@ -1,0 +1,91 @@
+From a7bb754ff6c1e4069183409a2309a466d16c0468 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:12 -0500
+Subject: [PATCH 01/10] spi: geni-qcom: Release CS left asserted when a message
+ ends without a transfer
+
+The GENI hardware drives CS itself and keeps it asserted after a transfer
+only when that transfer is issued with FRAGMENTATION, which the driver now
+does for the last transfer of a message with cs_change set.
+
+If the SPI core then ends a message with a zero-length transfer, as
+cros_ec_spi's terminate_request() does, nothing reaches the hardware and CS
+stays asserted. Every later EC command then arrives mid-transaction and the
+EC answers with garbage, so the Chrome EC on the HP Googlebook (Quartz)
+rejects every host command after the first one.
+
+Add a set_cs() callback that releases a CS held by a fragmented transfer
+with an explicit SPI_CS_DEASSERT command. Asserting is still left to the
+hardware, as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/spi/spi-geni-qcom.c | 38 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
+index 1fd9cf6e3..94f70dccd 100644
+--- a/drivers/spi/spi-geni-qcom.c
++++ b/drivers/spi/spi-geni-qcom.c
+@@ -797,6 +797,42 @@ static void geni_spi_handle_rx(struct spi_geni_master *mas)
+ 	mas->rx_rem_bytes -= rx_bytes;
+ }
+ 
++/*
++ * CS is driven by the GENI hardware: it is asserted for each transfer and
++ * stays asserted afterwards only if the transfer was issued with
++ * FRAGMENTATION. When the SPI core ends a message with a zero-length
++ * transfer (e.g. cros_ec_spi's terminate_request()), no transfer reaches the
++ * hardware, so release the CS here with an explicit SPI_CS_DEASSERT command.
++ */
++static void spi_geni_set_cs(struct spi_device *slv, bool set_flag)
++{
++	struct spi_geni_master *mas = spi_controller_get_devdata(slv->controller);
++	struct geni_se *se = &mas->se;
++	unsigned long time_left;
++
++	if (!(slv->mode & SPI_CS_HIGH))
++		set_flag = !set_flag;
++
++	/* Asserting is done by the next transfer's command */
++	if (set_flag || !mas->cs_flag || mas->cur_xfer_mode == GENI_GPI_DMA)
++		return;
++
++	spin_lock_irq(&mas->lock);
++	/* The command-done IRQ only completes cs_done in FIFO mode */
++	if (mas->cur_xfer_mode != GENI_SE_FIFO) {
++		mas->cur_xfer_mode = GENI_SE_FIFO;
++		geni_se_select_mode(se, GENI_SE_FIFO);
++	}
++	reinit_completion(&mas->cs_done);
++	mas->cs_flag = false;
++	geni_se_setup_m_cmd(se, SPI_CS_DEASSERT, 0);
++	spin_unlock_irq(&mas->lock);
++
++	time_left = wait_for_completion_timeout(&mas->cs_done, HZ);
++	if (!time_left)
++		dev_warn(mas->dev, "Timeout releasing chip select\n");
++}
++
+ static int setup_se_xfer(struct spi_transfer *xfer,
+ 				struct spi_geni_master *mas,
+ 				u16 mode, struct spi_controller *spi)
+@@ -876,6 +912,7 @@ static int setup_se_xfer(struct spi_transfer *xfer,
+ 	if (list_is_last(&xfer->transfer_list, &spi->cur_msg->transfers) ?
+ 	    xfer->cs_change : !xfer->cs_change)
+ 		m_params = FRAGMENTATION;
++	mas->cs_flag = m_params & FRAGMENTATION;
+ 
+ 	/*
+ 	 * Lock around right before we start the transfer since our
+@@ -1102,6 +1139,7 @@ static int spi_geni_probe(struct platform_device *pdev)
+ 	spi->max_dma_len = 0xffff0; /* 24 bits for tx/rx dma length */
+ 	spi->prepare_message = spi_geni_prepare_message;
+ 	spi->transfer_one = spi_geni_transfer_one;
++	spi->set_cs = spi_geni_set_cs;
+ 	spi->can_dma = geni_can_dma;
+ 	spi->dma_map_dev = dev->parent;
+ 	spi->auto_runtime_pm = true;
+-- 
+2.55.0
+

@@ -1,0 +1,16 @@
+# Your own dumps, downloads and builds: device-specific or not redistributable
+/src/
+/stock/
+/out/
+/firmware/
+/downloads/
+/logs/
+/keys/
+*.tar.*
+# Build outputs
+/initramfs/init
+/initramfs/ecprobe
+/initramfs/ecspi
+/initramfs/gbkexec
+/tools/drmtest/drmstripes
+__pycache__/

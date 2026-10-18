@@ -1,0 +1,51 @@
+From 406777c4c0bd8d246d41d012088958fc7ad3902d Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:12 -0500
+Subject: [PATCH 04/10] phy: qcom: eusb2-repeater: Reset the repeater on init
+
+The driver only ever sets EUSB2_RPTR_EN. On the HP Googlebook (Quartz),
+the firmware leaves the SMB2360 repeaters enabled, and depthcharge stops
+the xHCI controller at handoff while a device may be attached. The
+repeater of that port then never passes the port's USB 2.0 signalling
+on again: the PHY sees no line state change, so nothing enumerates on
+that port until reboot, not even after replugging or rebinding the
+controller.
+
+Toggle the enable off and on before programming the repeater, as the
+firmware (coreboot) does, so it starts from a clean state.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/phy/qualcomm/phy-qcom-eusb2-repeater.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/phy/qualcomm/phy-qcom-eusb2-repeater.c b/drivers/phy/qualcomm/phy-qcom-eusb2-repeater.c
+index efeec4709..ba3ceb54c 100644
+--- a/drivers/phy/qualcomm/phy-qcom-eusb2-repeater.c
++++ b/drivers/phy/qualcomm/phy-qcom-eusb2-repeater.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) 2023, Linaro Limited
+  */
+ 
++#include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/regulator/consumer.h>
+@@ -154,6 +155,14 @@ static int eusb2_repeater_init(struct phy *phy)
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * Reset the repeater by toggling its enable, as the firmware does.
++	 * Otherwise a repeater that was left enabled with a device attached
++	 * (e.g. by a bootloader that stopped the host controller mid-session)
++	 * never sees that port's USB 2.0 signalling again.
++	 */
++	regmap_write(regmap, base + EUSB2_EN_CTL1, 0);
++	udelay(50);
+ 	regmap_write(regmap, base + EUSB2_EN_CTL1, EUSB2_RPTR_EN);
+ 
+ 	/* Write registers from init table */
+-- 
+2.55.0
+

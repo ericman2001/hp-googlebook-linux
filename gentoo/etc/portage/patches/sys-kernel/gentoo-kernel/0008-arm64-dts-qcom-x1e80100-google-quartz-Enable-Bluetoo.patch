@@ -1,0 +1,193 @@
+From f4a286510e3b2009a75a2224f283088ece9290c7 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:13 -0500
+Subject: [PATCH 08/10] arm64: dts: qcom: x1e80100-google-quartz: Enable
+ Bluetooth
+
+The Bluetooth half of the WCN785x is on QUP1 SE6 (uart14), as on other
+X1E80100 laptops. Describe the module's PMU as the WCN7850 one it is,
+like the Lenovo Yoga Slim 7x does, so Wi-Fi and Bluetooth share it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 98 +++++++++++--------
+ 1 file changed, 59 insertions(+), 39 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index 28f2c66d2..98fdc6e7f 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -7,8 +7,9 @@
+  *
+  * Supported so far: the SoC core, the firmware framebuffer, the Chrome EC
+  * with the keyboard, the touchpad and touchscreen, USB 2.0 on both USB-C
+- * ports, the NVMe SSD and Wi-Fi. Other peripherals and the board regulators are left out
+- * until their wiring is ported from the stock vendor device tree.
++ * ports, the NVMe SSD, Wi-Fi and Bluetooth. Other peripherals and the board
++ * regulators are left out until their wiring is ported from the stock vendor
++ * device tree.
+  */
+ 
+ /dts-v1/;
+@@ -30,6 +31,10 @@ / {
+ 	model = "Google Quartz (HP Googlebook)";
+ 	compatible = "google,quartz", "qcom,x1e80100";
+ 
++	aliases {
++		serial1 = &uart14;
++	};
++
+ 	vreg_tp_3p3: regulator-touchpad {
+ 		compatible = "regulator-fixed";
+ 
+@@ -107,19 +112,15 @@ vreg_wcn_1p9: regulator-wcn-1p9 {
+ 		vin-supply = <&vreg_wcn_3p3>;
+ 	};
+ 
+-	wcn6855-pmu {
+-		compatible = "qcom,wcn6855-pmu";
++	wcn7850-pmu {
++		compatible = "qcom,wcn7850-pmu";
+ 
++		vdd-supply = <&vreg_wcn_0p95>;
++		vddio-supply = <&vreg_l15b_1p8>;
+ 		vddaon-supply = <&vreg_wcn_0p95>;
+-		vddio-supply = <&vreg_wcn_1p9>;
+-		vddpcie1p3-supply = <&vreg_wcn_1p9>;
+-		vddpcie1p9-supply = <&vreg_wcn_1p9>;
+-		vddpmu-supply = <&vreg_wcn_0p95>;
+-		vddpmumx-supply = <&vreg_wcn_0p95>;
+-		vddpmucx-supply = <&vreg_wcn_0p95>;
+-		vddrfa0p95-supply = <&vreg_wcn_0p95>;
+-		vddrfa1p3-supply = <&vreg_wcn_1p9>;
+-		vddrfa1p9-supply = <&vreg_wcn_1p9>;
++		vdddig-supply = <&vreg_wcn_0p95>;
++		vddrfa1p2-supply = <&vreg_wcn_1p9>;
++		vddrfa1p8-supply = <&vreg_wcn_1p9>;
+ 
+ 		wlan-enable-gpios = <&tlmm 117 GPIO_ACTIVE_HIGH>;
+ 		bt-enable-gpios = <&tlmm 116 GPIO_ACTIVE_HIGH>;
+@@ -128,44 +129,44 @@ wcn6855-pmu {
+ 		pinctrl-names = "default";
+ 
+ 		regulators {
+-			vreg_pmu_rfa_cmn_0p8: ldo0 {
+-				regulator-name = "vreg_pmu_rfa_cmn_0p8";
++			vreg_pmu_rfa_cmn: ldo0 {
++				regulator-name = "vreg_pmu_rfa_cmn";
+ 			};
+ 
+-			vreg_pmu_aon_0p8: ldo1 {
+-				regulator-name = "vreg_pmu_aon_0p8";
++			vreg_pmu_aon_0p59: ldo1 {
++				regulator-name = "vreg_pmu_aon_0p59";
+ 			};
+ 
+ 			vreg_pmu_wlcx_0p8: ldo2 {
+ 				regulator-name = "vreg_pmu_wlcx_0p8";
+ 			};
+ 
+-			vreg_pmu_wlmx_0p8: ldo3 {
+-				regulator-name = "vreg_pmu_wlmx_0p8";
++			vreg_pmu_wlmx_0p85: ldo3 {
++				regulator-name = "vreg_pmu_wlmx_0p85";
+ 			};
+ 
+-			vreg_pmu_btcmx_0p8: ldo4 {
+-				regulator-name = "vreg_pmu_btcmx_0p8";
++			vreg_pmu_btcmx_0p85: ldo4 {
++				regulator-name = "vreg_pmu_btcmx_0p85";
+ 			};
+ 
+-			vreg_pmu_pcie_1p8: ldo5 {
+-				regulator-name = "vreg_pmu_pcie_1p8";
++			vreg_pmu_rfa_0p8: ldo5 {
++				regulator-name = "vreg_pmu_rfa_0p8";
+ 			};
+ 
+-			vreg_pmu_pcie_0p9: ldo6 {
+-				regulator-name = "vreg_pmu_pcie_0p9";
++			vreg_pmu_rfa_1p2: ldo6 {
++				regulator-name = "vreg_pmu_rfa_1p2";
+ 			};
+ 
+-			vreg_pmu_rfa_0p8: ldo7 {
+-				regulator-name = "vreg_pmu_rfa_0p8";
++			vreg_pmu_rfa_1p8: ldo7 {
++				regulator-name = "vreg_pmu_rfa_1p8";
+ 			};
+ 
+-			vreg_pmu_rfa_1p2: ldo8 {
+-				regulator-name = "vreg_pmu_rfa_1p2";
++			vreg_pmu_pcie_0p9: ldo8 {
++				regulator-name = "vreg_pmu_pcie_0p9";
+ 			};
+ 
+-			vreg_pmu_rfa_1p7: ldo9 {
+-				regulator-name = "vreg_pmu_rfa_1p7";
++			vreg_pmu_pcie_1p8: ldo9 {
++				regulator-name = "vreg_pmu_pcie_1p8";
+ 			};
+ 		};
+ 	};
+@@ -356,7 +357,8 @@ &mdss {
+  * The PHY supplies are left on by the firmware.
+  */
+ /*
+- * Wi-Fi: WCN785x M.2 module, wired like the HP OmniBook X14. As for PCIe 6A,
++ * Wi-Fi: WCN785x M.2 module; the 3.3 V switch and enables are wired like
++ * the HP OmniBook X14, the PMU like the Lenovo Yoga Slim 7x. As for PCIe 6A,
+  * MSIs go to the controller's own receiver and DMA through the PCIe SMMU.
+  */
+ &pcie4 {
+@@ -384,15 +386,15 @@ wifi@0 {
+ 		compatible = "pci17cb,1107";
+ 		reg = <0x10000 0x0 0x0 0x0 0x0>;
+ 
+-		vddaon-supply = <&vreg_pmu_aon_0p8>;
+-		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
+-		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
++		vddaon-supply = <&vreg_pmu_aon_0p59>;
++		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
++		vddwlmx-supply = <&vreg_pmu_wlmx_0p85>;
++		vddrfacmn-supply = <&vreg_pmu_rfa_cmn>;
+ 		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
+ 		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
+-		vddrfa1p8-supply = <&vreg_pmu_rfa_1p7>;
+-		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
+-		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
+-		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
++		vddrfa1p8-supply = <&vreg_pmu_rfa_1p8>;
++		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
++		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
+ 	};
+ };
+ 
+@@ -581,6 +583,24 @@ &smb2360_1 {
+  * pmic_glink (orientation, roles) aren't described yet. The PHY and
+  * repeater supplies are left on by the firmware.
+  */
++/* Bluetooth half of the WCN785x */
++&uart14 {
++	status = "okay";
++
++	bluetooth {
++		compatible = "qcom,wcn7850-bt";
++		max-speed = <3200000>;
++
++		vddaon-supply = <&vreg_pmu_aon_0p59>;
++		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
++		vddwlmx-supply = <&vreg_pmu_wlmx_0p85>;
++		vddrfacmn-supply = <&vreg_pmu_rfa_cmn>;
++		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
++		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
++		vddrfa1p8-supply = <&vreg_pmu_rfa_1p8>;
++	};
++};
++
+ &usb_1_ss0_hsphy {
+ 	phys = <&smb2360_0_eusb2_repeater>;
+ 
+-- 
+2.55.0
+

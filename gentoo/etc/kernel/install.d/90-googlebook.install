@@ -1,0 +1,5 @@
+#!/bin/sh
+# kernel-install plugin: flash newly installed kernels to the HP Googlebook's
+# slot B. Arguments: COMMAND KERNEL_VERSION ENTRY_DIR_ABS KERNEL_IMAGE [INITRD...]
+[ "$1" = add ] || exit 0
+exec /usr/local/sbin/googlebook-install-kernel "$2" "$4"

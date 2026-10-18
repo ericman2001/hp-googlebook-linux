@@ -1,0 +1,135 @@
+From c40db7bce96528c75b0cd05bba3b28683127a354 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:12 -0500
+Subject: [PATCH 05/10] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+ NVMe SSD
+
+Enable PCIe 6A (Gen 4 x4) with the M.2 slot's GPIO-controlled 3.3 V
+supply and the stock PERST#/CLKREQ#/WAKE# wiring. With the GIC ITS
+unavailable, MSIs go to the controller's own MSI receiver; DMA goes
+through the PCIe SMMU, as in x1-el2.dtso.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 81 ++++++++++++++++++-
+ 1 file changed, 80 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index e6f935c42..e5593fa7a 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -6,12 +6,14 @@
+  * Gunyah-specific parts of hamoa.dtsi are adjusted as in x1-el2.dtso.
+  *
+  * Supported so far: the SoC core, the firmware framebuffer, the Chrome EC
+- * with the keyboard and USB 2.0 on both USB-C ports. Other peripherals and the board regulators are left out
++ * with the keyboard, USB 2.0 on both USB-C ports and the NVMe SSD. Other
++ * peripherals and the board regulators are left out
+  * until their wiring is ported from the stock vendor device tree.
+  */
+ 
+ /dts-v1/;
+ 
++#include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
+ 
+ #include "hamoa.dtsi"
+@@ -27,6 +29,23 @@ / {
+ 	model = "Google Quartz (HP Googlebook)";
+ 	compatible = "google,quartz", "qcom,x1e80100";
+ 
++	vreg_nvme: regulator-nvme {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_NVME_3P3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 18 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		startup-delay-us = <40000>;
++
++		pinctrl-0 = <&nvme_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
+ 	chosen {
+ 		#address-cells = <2>;
+ 		#size-cells = <2>;
+@@ -86,6 +105,36 @@ &mdss {
+ 	status = "okay";
+ };
+ 
++/*
++ * NVMe SSD. Its MSIs go to the controller's own MSI receiver, since the GIC
++ * ITS is unavailable; DMA goes through the PCIe SMMU, as in x1-el2.dtso.
++ * The PHY supplies are left on by the firmware.
++ */
++&pcie6a {
++	/delete-property/ msi-map;
++	iommu-map = <0 &pcie_smmu 0x60000 0x10000>;
++
++	vddpe-3v3-supply = <&vreg_nvme>;
++
++	pinctrl-0 = <&pcie6a_default>;
++	pinctrl-names = "default";
++
++	status = "okay";
++};
++
++&pcie6a_phy {
++	status = "okay";
++};
++
++&pcie6a_port0 {
++	reset-gpios = <&tlmm 152 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 154 GPIO_ACTIVE_LOW>;
++};
++
++&pcie_smmu {
++	status = "okay";
++};
++
+ &qupv3_1 {
+ 	status = "okay";
+ };
+@@ -297,4 +346,34 @@ ap_ec_int_l: ap-ec-int-l-state {
+ 		function = "gpio";
+ 		bias-disable;
+ 	};
++
++	nvme_reg_en: nvme-reg-en-state {
++		pins = "gpio18";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	pcie6a_default: pcie6a-default-state {
++		clkreq-n-pins {
++			pins = "gpio153";
++			function = "pcie6a_clk";
++			drive-strength = <2>;
++			bias-pull-up;
++		};
++
++		perst-n-pins {
++			pins = "gpio152";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-down;
++		};
++
++		wake-n-pins {
++			pins = "gpio154";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-up;
++		};
++	};
+ };
+-- 
+2.55.0
+

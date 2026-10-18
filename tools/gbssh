@@ -1,0 +1,7 @@
+#!/bin/sh
+# ssh into the Googlebook's Gentoo system as root with the project key.
+# usage: gbssh [command...]
+top=$(cd "$(dirname "$0")/.." && pwd)
+exec ssh -i "$top/keys/googlebook_ed25519" -o IdentitiesOnly=yes \
+	-o UserKnownHostsFile="$top/keys/known_hosts" -o StrictHostKeyChecking=accept-new \
+	-o ConnectTimeout=5 root@"${GBHOST:-10.0.0.194}" "$@"

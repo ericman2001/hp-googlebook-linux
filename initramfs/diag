@@ -1,0 +1,30 @@
+#!/bin/sh
+# Bring-up diagnostics, printed on the console before the shell starts.
+
+mountpoint -q /sys/kernel/debug || mount -t debugfs debugfs /sys/kernel/debug
+
+# Wait out the deferred-probe timeout (~12 s) so its messages come first
+while [ "$(cut -d. -f1 /proc/uptime)" -lt 15 ]; do sleep 1; done
+
+echo "== deferred probes"
+cat /sys/kernel/debug/devices_deferred 2>/dev/null | cut -c1-170
+
+echo "== kernel log: EC (non-debug lines)"
+dmesg | grep -iE 'cros|ec@|keyb' | grep -vE 'prepared|msg found|preamble|loop|returned|Command result' |
+	head -n 6 | cut -c1-178
+echo "== EC host commands from Linux (ecprobe): name=EC result"
+ecprobe
+
+
+echo "== spi devices: $(ls /sys/bus/spi/devices 2>/dev/null | tr '\n' ' ')"
+for d in /sys/bus/spi/devices/*; do
+	[ -e "$d" ] && echo "   $(basename "$d") -> driver: $(basename "$(readlink "$d/driver")" 2>/dev/null)"
+done
+echo "== input devices: $(ls /sys/class/input 2>/dev/null | tr '\n' ' ')"
+grep -h '^N:' /proc/bus/input/devices 2>/dev/null
+echo "== USB devices:"
+for d in /sys/bus/usb/devices/*; do
+	[ -e "$d/idVendor" ] && echo "   $(basename "$d") $(cat "$d/idVendor"):$(cat "$d/idProduct") $(cat "$d/product" 2>/dev/null)"
+done
+echo "== network: $(ip -o link show | awk -F': ' '{print $2}' | tr '\n' ' ')"
+echo "== EC interrupt: $(grep -iE 'cros|ec' /proc/interrupts | tr -s ' ' | cut -c1-120)"

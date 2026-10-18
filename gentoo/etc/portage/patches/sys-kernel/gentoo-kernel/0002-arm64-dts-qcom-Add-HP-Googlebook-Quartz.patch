@@ -1,0 +1,310 @@
+From 7de366486923ee06d80669086cf6e7b85418ce45 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:12 -0500
+Subject: [PATCH 02/10] arm64: dts: qcom: Add HP Googlebook (Quartz)
+
+Add initial support for the HP Googlebook "Quartz" (Google Bluey
+baseboard) with the Snapdragon X Elite (X1E80100).
+
+The firmware is coreboot + depthcharge, which enters Linux at EL2 and
+applies the dtbo partition's overlays onto this DT, so:
+
+ - the Gunyah-specific parts of hamoa.dtsi are adjusted as in x1-el2.dtso
+   (apss watchdog enabled, SBSA watchdog disabled),
+ - the GIC ITS is disabled, as in the stock DTB,
+ - reserved-memory follows the stock vendor DTB,
+ - the DTB is built with symbols.
+
+GPIOs 34-35 and 44-47 belong to the secure world; touching them raises a
+NoC error that QTEE treats as fatal.
+
+The display is the coreboot-initialised eDP framebuffer for now. MDSS is
+enabled without a driver bound so that the interconnect providers keep the
+firmware's bandwidth votes for it.
+
+The Chrome EC (keyboard included, with its Fn layer) is on QUP SE13 SPI.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/qcom/Makefile             |   3 +
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 254 ++++++++++++++++++
+ 2 files changed, 257 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+
+diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
+index 6f33c4e2f..40ff6f644 100644
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -427,6 +427,9 @@ x1e80100-dell-latitude-7455-el2-dtbs	:= x1e80100-dell-latitude-7455.dtb x1-el2.d
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-dell-latitude-7455.dtb x1e80100-dell-latitude-7455-el2.dtb
+ x1e80100-dell-xps13-9345-el2-dtbs	:= x1e80100-dell-xps13-9345.dtb x1-el2.dtbo
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-dell-xps13-9345.dtb x1e80100-dell-xps13-9345-el2.dtb
++# depthcharge applies the dtbo partition's overlays onto this base DTB
++DTC_FLAGS_x1e80100-google-quartz := -@
++dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-google-quartz.dtb
+ x1e80100-hp-elitebook-ultra-g1q-el2-dtbs := x1e80100-hp-elitebook-ultra-g1q.dtb x1-el2.dtbo
+ dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-hp-elitebook-ultra-g1q.dtb x1e80100-hp-elitebook-ultra-g1q-el2.dtb
+ x1e80100-hp-omnibook-x14-el2-dtbs	:= x1e80100-hp-omnibook-x14.dtb x1-el2.dtbo
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+new file mode 100644
+index 000000000..e2d147da3
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -0,0 +1,254 @@
++// SPDX-License-Identifier: BSD-3-Clause
++/*
++ * HP Googlebook "Quartz" (Google Bluey baseboard), Snapdragon X Elite.
++ *
++ * Boots through coreboot + depthcharge with Linux entered at EL2, so the
++ * Gunyah-specific parts of hamoa.dtsi are adjusted as in x1-el2.dtso.
++ *
++ * Supported so far: the SoC core, the firmware framebuffer and the Chrome EC
++ * with the keyboard. Other peripherals and the board regulators are left out
++ * until their wiring is ported from the stock vendor device tree.
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/input/input.h>
++
++#include "hamoa.dtsi"
++
++/* Placed differently by this firmware, recreated below at the stock addresses */
++/delete-node/ &adsp_rpc_remote_heap_mem;
++/delete-node/ &tz_stat_mem;
++/* Used by the Windows firmware's XBL only; not reserved in the stock map */
++/delete-node/ &xbl_tmp_buffer_mem;
++
++/ {
++	model = "Google Quartz (HP Googlebook)";
++	compatible = "google,quartz", "qcom,x1e80100";
++
++	chosen {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		/* eDP panel as set up by coreboot (see "framebuffer_info" in its log) */
++		framebuffer@e4800000 {
++			compatible = "simple-framebuffer";
++			reg = <0x0 0xe4800000 0x0 (2880 * 1800 * 4)>;
++			width = <2880>;
++			height = <1800>;
++			stride = <(2880 * 4)>;
++			format = "x8r8g8b8";
++		};
++	};
++
++	reserved-memory {
++		adsp_rpc_remote_heap_mem: adsp-rpc-remote-heap@82000000 {
++			reg = <0x0 0x82000000 0x0 0x800000>;
++			no-map;
++		};
++
++		tz_stat_mem: tz-stat@82800000 {
++			reg = <0x0 0x82800000 0x0 0x100000>;
++			no-map;
++		};
++
++		/* Firmware regions from the stock DTB that hamoa.dtsi doesn't cover */
++		wlan-msa@85380000 {
++			reg = <0x0 0x85380000 0x0 0xc00000>;
++			no-map;
++		};
++
++		/* Firmware splash framebuffer, handed over through the coreboot table */
++		splash-region@e4800000 {
++			reg = <0x0 0xe4800000 0x0 0x21c0000>;
++			no-map;
++		};
++	};
++};
++
++/* Not reserved by a hypervisor when running at EL2 */
++&apss_watchdog {
++	status = "okay";
++};
++
++&gpi_dma1 {
++	status = "okay";
++};
++
++/*
++ * No display driver yet, but as long as MDSS is enabled and unbound, the
++ * interconnect providers don't sync_state() and keep the bandwidth that
++ * the firmware-initialised display (simple-framebuffer) depends on.
++ */
++&mdss {
++	status = "okay";
++};
++
++&qupv3_1 {
++	status = "okay";
++};
++
++&spi13 {
++	status = "okay";
++
++	cros_ec: ec@0 {
++		compatible = "google,cros-ec-spi";
++		reg = <0>;
++		interrupts-extended = <&tlmm 66 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-0 = <&ap_ec_int_l>;
++		pinctrl-names = "default";
++		spi-max-frequency = <3000000>;
++		wakeup-source;
++
++		keyboard-controller {
++			compatible = "google,cros-ec-keyb";
++			keypad,num-rows = <8>;
++			keypad,num-columns = <18>;
++			google,needs-ghost-filter;
++			/* From the stock DTB; rows 8-15 are the Fn layer */
++			linux,keymap = <
++				MATRIX_KEY(0, 3, KEY_B)
++				MATRIX_KEY(0, 5, KEY_N)
++				MATRIX_KEY(0, 6, KEY_RO)
++				MATRIX_KEY(0, 8, KEY_EQUAL)
++				MATRIX_KEY(0, 9, KEY_HOME)
++				MATRIX_KEY(0, 10, KEY_RIGHTALT)
++				MATRIX_KEY(0, 16, KEY_FN)
++				MATRIX_KEY(1, 1, KEY_ESC)
++				MATRIX_KEY(1, 3, KEY_G)
++				MATRIX_KEY(1, 6, KEY_H)
++				MATRIX_KEY(1, 8, KEY_APOSTROPHE)
++				MATRIX_KEY(1, 11, KEY_BACKSPACE)
++				MATRIX_KEY(1, 12, KEY_HENKAN)
++				MATRIX_KEY(1, 14, KEY_LEFTCTRL)
++				MATRIX_KEY(2, 1, KEY_TAB)
++				MATRIX_KEY(2, 3, KEY_T)
++				MATRIX_KEY(2, 5, KEY_RIGHTBRACE)
++				MATRIX_KEY(2, 6, KEY_Y)
++				MATRIX_KEY(2, 8, KEY_LEFTBRACE)
++				MATRIX_KEY(2, 9, KEY_DELETE)
++				MATRIX_KEY(2, 12, KEY_PAGEUP)
++				MATRIX_KEY(2, 17, KEY_YEN)
++				MATRIX_KEY(3, 0, KEY_LEFTMETA)
++				MATRIX_KEY(3, 1, KEY_GRAVE)
++				MATRIX_KEY(3, 3, KEY_5)
++				MATRIX_KEY(3, 4, KEY_S)
++				MATRIX_KEY(3, 6, KEY_MINUS)
++				MATRIX_KEY(3, 8, KEY_6)
++				MATRIX_KEY(3, 9, KEY_SLEEP)
++				MATRIX_KEY(3, 11, KEY_BACKSLASH)
++				MATRIX_KEY(3, 12, KEY_MUHENKAN)
++				MATRIX_KEY(3, 14, KEY_RIGHTCTRL)
++				MATRIX_KEY(4, 1, KEY_A)
++				MATRIX_KEY(4, 2, KEY_D)
++				MATRIX_KEY(4, 3, KEY_F)
++				MATRIX_KEY(4, 5, KEY_K)
++				MATRIX_KEY(4, 6, KEY_J)
++				MATRIX_KEY(4, 8, KEY_SEMICOLON)
++				MATRIX_KEY(4, 9, KEY_L)
++				MATRIX_KEY(4, 11, KEY_ENTER)
++				MATRIX_KEY(4, 12, KEY_END)
++				MATRIX_KEY(5, 1, KEY_1)
++				MATRIX_KEY(5, 2, KEY_COMMA)
++				MATRIX_KEY(5, 3, KEY_DOT)
++				MATRIX_KEY(5, 4, KEY_SLASH)
++				MATRIX_KEY(5, 5, KEY_C)
++				MATRIX_KEY(5, 6, KEY_SPACE)
++				MATRIX_KEY(5, 7, KEY_LEFTSHIFT)
++				MATRIX_KEY(5, 8, KEY_X)
++				MATRIX_KEY(5, 9, KEY_V)
++				MATRIX_KEY(5, 11, KEY_M)
++				MATRIX_KEY(5, 12, KEY_PAGEDOWN)
++				MATRIX_KEY(6, 1, KEY_Z)
++				MATRIX_KEY(6, 2, KEY_3)
++				MATRIX_KEY(6, 3, KEY_4)
++				MATRIX_KEY(6, 4, KEY_2)
++				MATRIX_KEY(6, 5, KEY_8)
++				MATRIX_KEY(6, 6, KEY_0)
++				MATRIX_KEY(6, 8, KEY_7)
++				MATRIX_KEY(6, 9, KEY_9)
++				MATRIX_KEY(6, 11, KEY_DOWN)
++				MATRIX_KEY(6, 12, KEY_RIGHT)
++				MATRIX_KEY(6, 13, KEY_LEFTALT)
++				MATRIX_KEY(6, 15, KEY_ASSISTANT)
++				MATRIX_KEY(6, 17, KEY_BACKSLASH)
++				MATRIX_KEY(7, 1, KEY_U)
++				MATRIX_KEY(7, 2, KEY_I)
++				MATRIX_KEY(7, 3, KEY_O)
++				MATRIX_KEY(7, 4, KEY_P)
++				MATRIX_KEY(7, 5, KEY_Q)
++				MATRIX_KEY(7, 6, KEY_W)
++				MATRIX_KEY(7, 7, KEY_RIGHTSHIFT)
++				MATRIX_KEY(7, 8, KEY_E)
++				MATRIX_KEY(7, 9, KEY_R)
++				MATRIX_KEY(7, 11, KEY_UP)
++				MATRIX_KEY(7, 12, KEY_LEFT)
++				MATRIX_KEY(7, 17, KEY_102ND)
++				MATRIX_KEY(6, 15, KEY_CONTEXTUAL_INSERT)
++				MATRIX_KEY(4, 10, KEY_FN)
++				MATRIX_KEY(0, 11, KEY_DELETE)
++				MATRIX_KEY(2, 7, KEY_102ND)
++				MATRIX_KEY(2, 10, KEY_YEN)
++				MATRIX_KEY(6, 10, KEY_BACKSLASH)
++				MATRIX_KEY(0, 2, KEY_BACK)
++				MATRIX_KEY(3, 2, KEY_HOMEPAGE)
++				MATRIX_KEY(2, 2, KEY_SCALE)
++				MATRIX_KEY(1, 2, KEY_FULL_SCREEN)
++				MATRIX_KEY(4, 4, KEY_SYSRQ)
++				MATRIX_KEY(2, 4, KEY_BRIGHTNESSDOWN)
++				MATRIX_KEY(1, 4, KEY_BRIGHTNESSUP)
++				MATRIX_KEY(2, 11, KEY_KBDILLUMTOGGLE)
++				MATRIX_KEY(1, 9, KEY_MICMUTE)
++				MATRIX_KEY(0, 4, KEY_MUTE)
++				MATRIX_KEY(0, 1, KEY_VOLUMEDOWN)
++				MATRIX_KEY(1, 5, KEY_VOLUMEUP)
++				MATRIX_KEY(3, 5, KEY_DICTATE)
++				MATRIX_KEY(8, 2, KEY_F1)
++				MATRIX_KEY(11, 2, KEY_F2)
++				MATRIX_KEY(10, 2, KEY_F3)
++				MATRIX_KEY(9, 2, KEY_F4)
++				MATRIX_KEY(12, 4, KEY_F5)
++				MATRIX_KEY(10, 4, KEY_F6)
++				MATRIX_KEY(9, 4, KEY_F7)
++				MATRIX_KEY(10, 11, KEY_F8)
++				MATRIX_KEY(9, 9, KEY_F9)
++				MATRIX_KEY(8, 4, KEY_F10)
++				MATRIX_KEY(8, 1, KEY_F11)
++				MATRIX_KEY(9, 5, KEY_F12)
++				MATRIX_KEY(11, 5, KEY_F13)
++				MATRIX_KEY(14, 15, KEY_CAPSLOCK)
++				MATRIX_KEY(9, 11, KEY_DELETE)
++				MATRIX_KEY(15, 12, KEY_HOME)
++				MATRIX_KEY(14, 12, KEY_END)
++				MATRIX_KEY(15, 11, KEY_PAGEUP)
++				MATRIX_KEY(14, 11, KEY_PAGEDOWN)
++			>;
++		};
++	};
++};
++
++/* Disabled (and its MMIO reserved) in the stock DTB as well */
++&gic_its {
++	status = "disabled";
++};
++
++/* Implemented in software by Gunyah, which isn't present on this firmware */
++&sbsa_watchdog {
++	status = "disabled";
++};
++
++/*
++ * Owned by the secure world; touching them raises a NoC error that
++ * QTEE treats as fatal. Same ranges as the stock DTB.
++ */
++&tlmm {
++	gpio-reserved-ranges = <34 2>, /* Unused */
++			       <44 4>; /* SPI (TPM) */
++
++	ap_ec_int_l: ap-ec-int-l-state {
++		pins = "gpio66";
++		function = "gpio";
++		bias-disable;
++	};
++};
+-- 
+2.55.0
+

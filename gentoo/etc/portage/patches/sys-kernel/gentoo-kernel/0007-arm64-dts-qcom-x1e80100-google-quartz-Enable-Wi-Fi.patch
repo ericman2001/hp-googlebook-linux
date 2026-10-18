@@ -1,0 +1,284 @@
+From 1e2fb8fdc64c62fecc8444046ae522f5fc538592 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:13 -0500
+Subject: [PATCH 07/10] arm64: dts: qcom: x1e80100-google-quartz: Enable Wi-Fi
+
+The WCN785x M.2 module (HP/AzureWave, PCI subsystem 103c:8e64) sits on
+PCIe 4 and is wired like the HP OmniBook X14's: a GPIO-switched 3.3 V
+supply, WLAN/BT enables on GPIOs 117/116, and the PMU's LDOs feeding the
+chip. As for PCIe 6A, MSIs go to the controller's own receiver and DMA
+through the PCIe SMMU. L15B, L3E and L3I stay on as in the stock DT, since
+they also feed blocks not described yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 225 +++++++++++++++++-
+ 1 file changed, 224 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index 1ef51f7ed..28f2c66d2 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -7,7 +7,7 @@
+  *
+  * Supported so far: the SoC core, the firmware framebuffer, the Chrome EC
+  * with the keyboard, the touchpad and touchscreen, USB 2.0 on both USB-C
+- * ports and the NVMe SSD. Other peripherals and the board regulators are left out
++ * ports, the NVMe SSD and Wi-Fi. Other peripherals and the board regulators are left out
+  * until their wiring is ported from the stock vendor device tree.
+  */
+ 
+@@ -65,6 +65,111 @@ vreg_ts_3p3: regulator-touchscreen {
+ 		regulator-always-on;
+ 	};
+ 
++	vreg_wcn_3p3: regulator-wcn-3p3 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_WCN_3P3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 214 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&wcn_sw_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
++	/*
++	 * TODO: These two regulators are actually part of the removable M.2
++	 * card and not the CRD mainboard. Need to describe this differently.
++	 * Functionally it works correctly, because all we need to do is to
++	 * turn on the actual 3.3V supply above.
++	 */
++	vreg_wcn_0p95: regulator-wcn-0p95 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_WCN_0P95";
++		regulator-min-microvolt = <950000>;
++		regulator-max-microvolt = <950000>;
++
++		vin-supply = <&vreg_wcn_3p3>;
++	};
++
++	vreg_wcn_1p9: regulator-wcn-1p9 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_WCN_1P9";
++		regulator-min-microvolt = <1900000>;
++		regulator-max-microvolt = <1900000>;
++
++		vin-supply = <&vreg_wcn_3p3>;
++	};
++
++	wcn6855-pmu {
++		compatible = "qcom,wcn6855-pmu";
++
++		vddaon-supply = <&vreg_wcn_0p95>;
++		vddio-supply = <&vreg_wcn_1p9>;
++		vddpcie1p3-supply = <&vreg_wcn_1p9>;
++		vddpcie1p9-supply = <&vreg_wcn_1p9>;
++		vddpmu-supply = <&vreg_wcn_0p95>;
++		vddpmumx-supply = <&vreg_wcn_0p95>;
++		vddpmucx-supply = <&vreg_wcn_0p95>;
++		vddrfa0p95-supply = <&vreg_wcn_0p95>;
++		vddrfa1p3-supply = <&vreg_wcn_1p9>;
++		vddrfa1p9-supply = <&vreg_wcn_1p9>;
++
++		wlan-enable-gpios = <&tlmm 117 GPIO_ACTIVE_HIGH>;
++		bt-enable-gpios = <&tlmm 116 GPIO_ACTIVE_HIGH>;
++
++		pinctrl-0 = <&wcn_wlan_bt_en>;
++		pinctrl-names = "default";
++
++		regulators {
++			vreg_pmu_rfa_cmn_0p8: ldo0 {
++				regulator-name = "vreg_pmu_rfa_cmn_0p8";
++			};
++
++			vreg_pmu_aon_0p8: ldo1 {
++				regulator-name = "vreg_pmu_aon_0p8";
++			};
++
++			vreg_pmu_wlcx_0p8: ldo2 {
++				regulator-name = "vreg_pmu_wlcx_0p8";
++			};
++
++			vreg_pmu_wlmx_0p8: ldo3 {
++				regulator-name = "vreg_pmu_wlmx_0p8";
++			};
++
++			vreg_pmu_btcmx_0p8: ldo4 {
++				regulator-name = "vreg_pmu_btcmx_0p8";
++			};
++
++			vreg_pmu_pcie_1p8: ldo5 {
++				regulator-name = "vreg_pmu_pcie_1p8";
++			};
++
++			vreg_pmu_pcie_0p9: ldo6 {
++				regulator-name = "vreg_pmu_pcie_0p9";
++			};
++
++			vreg_pmu_rfa_0p8: ldo7 {
++				regulator-name = "vreg_pmu_rfa_0p8";
++			};
++
++			vreg_pmu_rfa_1p2: ldo8 {
++				regulator-name = "vreg_pmu_rfa_1p2";
++			};
++
++			vreg_pmu_rfa_1p7: ldo9 {
++				regulator-name = "vreg_pmu_rfa_1p7";
++			};
++		};
++	};
++
+ 	vreg_nvme: regulator-nvme {
+ 		compatible = "regulator-fixed";
+ 
+@@ -137,6 +242,46 @@ vreg_l1b_1p8: ldo1 {
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+ 			regulator-always-on;
+ 		};
++
++		/* WCN785x I/O and always-on domain, always on in the stock DT */
++		vreg_l15b_1p8: ldo15 {
++			regulator-name = "vreg_l15b_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-always-on;
++		};
++	};
++
++	/*
++	 * L3E and L3I also feed PHYs that aren't described yet (UFS, the
++	 * multiport eUSB2 PHYs), so keep them on rather than letting the
++	 * PCIe 4 PHY switch them off.
++	 */
++	regulators-1 {
++		compatible = "qcom,pmc8380-rpmh-regulators";
++		qcom,pmic-id = "e";
++
++		vreg_l3e_1p2: ldo3 {
++			regulator-name = "vreg_l3e_1p2";
++			regulator-min-microvolt = <1200000>;
++			regulator-max-microvolt = <1200000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-always-on;
++		};
++	};
++
++	regulators-2 {
++		compatible = "qcom,pm8550ve-rpmh-regulators";
++		qcom,pmic-id = "i";
++
++		vreg_l3i_0p8: ldo3 {
++			regulator-name = "vreg_l3i_0p8";
++			regulator-min-microvolt = <880000>;
++			regulator-max-microvolt = <920000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-always-on;
++		};
+ 	};
+ };
+ 
+@@ -210,6 +355,47 @@ &mdss {
+  * ITS is unavailable; DMA goes through the PCIe SMMU, as in x1-el2.dtso.
+  * The PHY supplies are left on by the firmware.
+  */
++/*
++ * Wi-Fi: WCN785x M.2 module, wired like the HP OmniBook X14. As for PCIe 6A,
++ * MSIs go to the controller's own receiver and DMA through the PCIe SMMU.
++ */
++&pcie4 {
++	/delete-property/ msi-map;
++	iommu-map = <0 &pcie_smmu 0x40000 0x10000>;
++
++	pinctrl-0 = <&pcie4_default>;
++	pinctrl-names = "default";
++
++	status = "okay";
++};
++
++&pcie4_phy {
++	vdda-phy-supply = <&vreg_l3i_0p8>;
++	vdda-pll-supply = <&vreg_l3e_1p2>;
++
++	status = "okay";
++};
++
++&pcie4_port0 {
++	reset-gpios = <&tlmm 146 GPIO_ACTIVE_LOW>;
++	wake-gpios = <&tlmm 148 GPIO_ACTIVE_LOW>;
++
++	wifi@0 {
++		compatible = "pci17cb,1107";
++		reg = <0x10000 0x0 0x0 0x0 0x0>;
++
++		vddaon-supply = <&vreg_pmu_aon_0p8>;
++		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
++		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
++		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
++		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
++		vddrfa1p8-supply = <&vreg_pmu_rfa_1p7>;
++		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
++		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
++		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
++	};
++};
++
+ &pcie6a {
+ 	/delete-property/ msi-map;
+ 	iommu-map = <0 &pcie_smmu 0x60000 0x10000>;
+@@ -510,6 +696,43 @@ ts_vdd_en: ts-vdd-en-state {
+ 		bias-disable;
+ 	};
+ 
++	pcie4_default: pcie4-default-state {
++		clkreq-n-pins {
++			pins = "gpio147";
++			function = "pcie4_clk";
++			drive-strength = <2>;
++			bias-pull-up;
++		};
++
++		perst-n-pins {
++			pins = "gpio146";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-down;
++		};
++
++		wake-n-pins {
++			pins = "gpio148";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-up;
++		};
++	};
++
++	wcn_sw_en: wcn-sw-en-state {
++		pins = "gpio214";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	wcn_wlan_bt_en: wcn-wlan-bt-en-state {
++		pins = "gpio116", "gpio117";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	pcie6a_default: pcie6a-default-state {
+ 		clkreq-n-pins {
+ 			pins = "gpio153";
+-- 
+2.55.0
+

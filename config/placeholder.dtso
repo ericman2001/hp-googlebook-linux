@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Placeholder overlay for the dtbo partition. The stock image always has a
+ * base DT plus one overlay entry, so ours does too; this one only marks the
+ * tree so the applied result can be recognised from Linux.
+ */
+
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	google,quartz-dtbo-overlay-applied;
+};

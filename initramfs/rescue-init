@@ -1,0 +1,84 @@
+#!/bin/busybox sh
+# /init for the Googlebook rescue initramfs: a busybox shell on the console.
+
+/bin/busybox --install -s /bin
+
+mount -t devtmpfs devtmpfs /dev
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mkdir -p /dev/pts /run /tmp
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /run
+mount -t tmpfs tmpfs /tmp
+mount -t debugfs debugfs /sys/kernel/debug
+
+# Boot the installed system when the command line names a root filesystem
+# (root=LABEL=..., root=UUID=... or root=/dev/...), unless gbrescue is given
+# or a key is pressed within 3 seconds. Falls back to this rescue shell.
+root=$(sed -n 's/.*\<root=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -n "$root" ] && ! grep -qw gbrescue /proc/cmdline; then
+	echo "Booting the system on $root -- press any key within 3 s for the rescue shell"
+	if ! read -t 3 -n 1 key < /dev/console; then
+		dev=
+		for i in $(seq 50); do
+			case "$root" in
+			/dev/*) [ -b "$root" ] && dev=$root ;;
+			*) dev=$(findfs "$root" 2>/dev/null) ;;
+			esac
+			[ -n "$dev" ] && break
+			sleep 0.2
+		done
+		mkdir -p /newroot
+		if [ -n "$dev" ] && mount -o rw "$dev" /newroot && { [ -e /newroot/sbin/init ] || [ -L /newroot/sbin/init ]; }; then
+			umount /sys/kernel/debug /dev/pts /run /tmp /proc /sys /dev 2>/dev/null
+			exec switch_root /newroot /sbin/init
+		fi
+		echo "could not boot $root (device: ${dev:-not found}); starting the rescue shell"
+		umount /newroot 2>/dev/null
+	fi
+fi
+
+# Keep kernel messages from scribbling over the shell; see them with dmesg
+dmesg -n 1
+
+# Start DHCP on every wired interface that appears, now or after a replug
+(
+	while true; do
+		for n in /sys/class/net/eth* /sys/class/net/en*; do
+			[ -e "$n" ] || continue
+			n=$(basename "$n")
+			# A replugged adapter is a new interface with a new ifindex;
+			# drop the udhcpc left over from the previous one
+			pf=/run/udhcpc.$n.$(cat "/sys/class/net/$n/ifindex").pid
+			[ -e "$pf" ] && kill -0 "$(cat "$pf")" 2>/dev/null && continue
+			for old in /run/udhcpc.$n.*.pid; do
+				[ -e "$old" ] && kill "$(cat "$old")" 2>/dev/null; rm -f "$old"
+			done
+			udhcpc -i "$n" -b -p "$pf" > /dev/null 2>&1
+		done
+		sleep 2
+	done
+) &
+
+# Opt-in: gbnet.telnet=1 on the kernel command line starts the telnet shell
+if grep -qw gbnet.telnet=1 /proc/cmdline; then
+	telnetd -l /bin/sh -p 23 && echo "telnet shell enabled on port 23 (gbnet.telnet=1)"
+fi
+
+cat <<EOF
+
+Gentoo Googlebook rescue shell ($(uname -r))
+  dmesg | less             kernel log
+  diag                     bring-up diagnostics
+  cat /sys/firmware/log    firmware log
+  ecprobe / ecspi          EC host command tests
+  netshell                 telnet root shell on the LAN (no password!)
+  reboot -f                restart
+
+EOF
+
+# Respawn a shell with a proper controlling terminal on the active console
+while true; do
+	setsid cttyhack sh -l
+	echo "shell exited, restarting"
+done

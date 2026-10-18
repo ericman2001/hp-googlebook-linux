@@ -1,0 +1,237 @@
+From a0c3c87b3f5fa8824c287144ad3ad94c26f37844 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sat, 17 Oct 2026 23:35:12 -0500
+Subject: [PATCH 06/10] arm64: dts: qcom: x1e80100-google-quartz: Add the
+ touchpad and touchscreen
+
+Both are HID over I2C: a Synaptics touchpad (06CB:96E7) on QUP0 SE0 with a
+GPIO-switched 3.3 V supply and the 1.8 V L1B rail, and an ELAN touchscreen
+(04F3:4832) on QUP1 SE0 with its own 3.3 V supply and reset line. The
+supplies stay on, as in the stock DT: the touchpad needs time after power-up
+and i2c-hid otherwise gives up on it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 160 +++++++++++++++++-
+ 1 file changed, 158 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index e5593fa7a..1ef51f7ed 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -6,8 +6,8 @@
+  * Gunyah-specific parts of hamoa.dtsi are adjusted as in x1-el2.dtso.
+  *
+  * Supported so far: the SoC core, the firmware framebuffer, the Chrome EC
+- * with the keyboard, USB 2.0 on both USB-C ports and the NVMe SSD. Other
+- * peripherals and the board regulators are left out
++ * with the keyboard, the touchpad and touchscreen, USB 2.0 on both USB-C
++ * ports and the NVMe SSD. Other peripherals and the board regulators are left out
+  * until their wiring is ported from the stock vendor device tree.
+  */
+ 
+@@ -15,6 +15,7 @@
+ 
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
++#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+ 
+ #include "hamoa.dtsi"
+ #include "hamoa-pmics.dtsi"
+@@ -29,6 +30,41 @@ / {
+ 	model = "Google Quartz (HP Googlebook)";
+ 	compatible = "google,quartz", "qcom,x1e80100";
+ 
++	vreg_tp_3p3: regulator-touchpad {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_TP_3P3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 36 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&tpad_vdd_en>;
++		pinctrl-names = "default";
++
++		/* Kept on as in the stock DT; the touchpad needs time after power-up */
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	vreg_ts_3p3: regulator-touchscreen {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_TS_3P3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 88 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		startup-delay-us = <5000>;
++
++		pinctrl-0 = <&ts_vdd_en>;
++		pinctrl-names = "default";
++
++		regulator-always-on;
++	};
++
+ 	vreg_nvme: regulator-nvme {
+ 		compatible = "regulator-fixed";
+ 
+@@ -88,10 +124,30 @@ splash-region@e4800000 {
+ };
+ 
+ /* Not reserved by a hypervisor when running at EL2 */
++&apps_rsc {
++	regulators-0 {
++		compatible = "qcom,pm8550-rpmh-regulators";
++		qcom,pmic-id = "b";
++
++		/* Touchpad; always on in the stock DT as well */
++		vreg_l1b_1p8: ldo1 {
++			regulator-name = "vreg_l1b_1p8";
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <1800000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-always-on;
++		};
++	};
++};
++
+ &apss_watchdog {
+ 	status = "okay";
+ };
+ 
++&gpi_dma0 {
++	status = "okay";
++};
++
+ &gpi_dma1 {
+ 	status = "okay";
+ };
+@@ -101,6 +157,50 @@ &gpi_dma1 {
+  * interconnect providers don't sync_state() and keep the bandwidth that
+  * the firmware-initialised display (simple-framebuffer) depends on.
+  */
++&i2c0 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++
++	touchpad@2c {
++		compatible = "hid-over-i2c";
++		reg = <0x2c>;
++
++		hid-descr-addr = <0x20>;
++		interrupts-extended = <&tlmm 3 IRQ_TYPE_LEVEL_LOW>;
++
++		vdd-supply = <&vreg_l1b_1p8>;
++		vddl-supply = <&vreg_tp_3p3>;
++
++		pinctrl-0 = <&tpad_default>;
++		pinctrl-names = "default";
++
++		wakeup-source;
++	};
++};
++
++&i2c8 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++
++	touchscreen@15 {
++		compatible = "hid-over-i2c";
++		reg = <0x15>;
++
++		hid-descr-addr = <0x1>;
++		interrupts-extended = <&tlmm 51 IRQ_TYPE_LEVEL_LOW>;
++
++		reset-gpios = <&tlmm 48 GPIO_ACTIVE_LOW>;
++		post-reset-deassert-delay-ms = <160>;
++
++		vdd-supply = <&vreg_ts_3p3>;
++
++		pinctrl-0 = <&ts_default>;
++		pinctrl-names = "default";
++	};
++};
++
+ &mdss {
+ 	status = "okay";
+ };
+@@ -135,6 +235,10 @@ &pcie_smmu {
+ 	status = "okay";
+ };
+ 
++&qupv3_0 {
++	status = "okay";
++};
++
+ &qupv3_1 {
+ 	status = "okay";
+ };
+@@ -354,6 +458,58 @@ nvme_reg_en: nvme-reg-en-state {
+ 		bias-disable;
+ 	};
+ 
++	tpad_default: tpad-default-state {
++		int-n-pins {
++			pins = "gpio3";
++			function = "gpio";
++			bias-disable;
++		};
++
++		en-pins {
++			pins = "gpio2";
++			function = "gpio";
++			bias-disable;
++		};
++	};
++
++	tpad_vdd_en: tpad-vdd-en-state {
++		pins = "gpio36";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	ts_default: ts-default-state {
++		int-n-pins {
++			pins = "gpio51";
++			function = "gpio";
++			bias-disable;
++		};
++
++		reset-n-pins {
++			pins = "gpio48";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-disable;
++		};
++
++		/* Held low by the stock firmware as well */
++		report-en-pins {
++			pins = "gpio89";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-disable;
++			output-low;
++		};
++	};
++
++	ts_vdd_en: ts-vdd-en-state {
++		pins = "gpio88";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	pcie6a_default: pcie6a-default-state {
+ 		clkreq-n-pins {
+ 			pins = "gpio153";
+-- 
+2.55.0
+
