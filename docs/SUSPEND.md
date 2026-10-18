@@ -1,7 +1,8 @@
 # Suspend: status and notes
 
 **Status: s2idle works.** The laptop suspends to idle and resumes into the
-running session, with Wi-Fi and NVMe working afterwards. It needs:
+running session, with Wi-Fi and NVMe working afterwards. Closing and opening
+the lid works (GNOME returns to the lock screen). It needs:
 
 * kernel patches 0021 and 0022 (PCIe GDSCs in retention, see below)
 * `gentoo/etc/systemd/sleep.conf.d/googlebook.conf`, which makes systemd use
