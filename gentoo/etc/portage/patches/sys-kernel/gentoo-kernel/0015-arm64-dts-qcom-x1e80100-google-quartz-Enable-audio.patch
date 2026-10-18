@@ -1,0 +1,359 @@
+From a34dcc92b099bb234d601d1b2d58e5875ef161b9 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 02:47:18 -0500
+Subject: [PATCH 15/15] arm64: dts: qcom: x1e80100-google-quartz: Enable audio
+
+Quartz uses the CRD's audio design (the stock sound card is even named
+"hamoa-x1e80100-crd-wsa884x-snd-card"): a WCD938x headset codec on
+SoundWire, four WSA884x speaker amplifiers, two on each WSA bus, and two
+DMICs. Describe them as on the CRD, with Quartz's speaker shutdown lines
+(TLMM 204 and 205), and keep the CRD's speaker names so its AudioReach
+topology and UCM profile apply. All four speakers are at the front edge.
+
+DMIC1 gives occasional full-scale samples at the CRD's 4.8 MHz DMIC
+clock; 2.4 MHz cuts them down without the extra noise of 1.2 MHz.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 290 +++++++++++++++++-
+ 1 file changed, 288 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index 6118f379f..d84421bd1 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -7,8 +7,8 @@
+  *
+  * Supported so far: the SoC core, the eDP panel and the GPU, the Chrome EC
+  * with the keyboard, the touchpad and touchscreen, both USB-C ports (USB 3,
+- * DisplayPort alt mode), the NVMe SSD, Wi-Fi, Bluetooth, and the ADSP with
+- * the battery charger. Other peripherals and the board regulators are left
++ * DisplayPort alt mode), the NVMe SSD, Wi-Fi, Bluetooth, audio, and the ADSP
++ * with the battery charger. Other peripherals and the board regulators are left
+  * out until their wiring is ported from the stock vendor device tree.
+  */
+ 
+@@ -356,6 +356,154 @@ vreg_rtmr1_3p3: regulator-rtmr1-3p3 {
+ 		regulator-boot-on;
+ 	};
+ 
++	/*
++	 * Audio is the CRD's design (the stock sound card is even called
++	 * "hamoa-x1e80100-crd-wsa884x-snd-card"): a WCD938x headset codec and
++	 * four WSA884x speaker amplifiers, two on each WSA SoundWire bus, plus
++	 * two DMICs. The speakers take the CRD's names so its UCM profile and
++	 * AudioReach topology apply. All four sit at the front edge; by ear,
++	 * channels 0-3 of the speaker PCM are left, right, right, left.
++	 */
++	sound {
++		compatible = "qcom,x1e80100-sndcard";
++		model = "X1E80100-Google-Quartz";
++		audio-routing = "WooferLeft IN", "WSA WSA_SPK1 OUT",
++				"TweeterLeft IN", "WSA WSA_SPK2 OUT",
++				"WooferRight IN", "WSA2 WSA_SPK1 OUT",
++				"TweeterRight IN", "WSA2 WSA_SPK2 OUT",
++				"IN1_HPHL", "HPHL_OUT",
++				"IN2_HPHR", "HPHR_OUT",
++				"AMIC2", "MIC BIAS2",
++				"VA DMIC0", "MIC BIAS1",
++				"VA DMIC1", "MIC BIAS1",
++				"TX SWR_INPUT1", "ADC2_OUTPUT";
++
++		displayport-0-dai-link {
++			link-name = "DisplayPort0 Playback";
++
++			cpu {
++				sound-dai = <&q6apmbedai DISPLAY_PORT_RX_0>;
++			};
++
++			codec {
++				sound-dai = <&mdss_dp0>;
++			};
++
++			platform {
++				sound-dai = <&q6apm>;
++			};
++		};
++
++		displayport-1-dai-link {
++			link-name = "DisplayPort1 Playback";
++
++			cpu {
++				sound-dai = <&q6apmbedai DISPLAY_PORT_RX_1>;
++			};
++
++			codec {
++				sound-dai = <&mdss_dp1>;
++			};
++
++			platform {
++				sound-dai = <&q6apm>;
++			};
++		};
++
++		wcd-playback-dai-link {
++			link-name = "WCD Playback";
++
++			cpu {
++				sound-dai = <&q6apmbedai RX_CODEC_DMA_RX_0>;
++			};
++
++			codec {
++				sound-dai = <&wcd938x 0>, <&swr1 0>, <&lpass_rxmacro 0>;
++			};
++
++			platform {
++				sound-dai = <&q6apm>;
++			};
++		};
++
++		wcd-capture-dai-link {
++			link-name = "WCD Capture";
++
++			cpu {
++				sound-dai = <&q6apmbedai TX_CODEC_DMA_TX_3>;
++			};
++
++			codec {
++				sound-dai = <&wcd938x 1>, <&swr2 1>, <&lpass_txmacro 0>;
++			};
++
++			platform {
++				sound-dai = <&q6apm>;
++			};
++		};
++
++		wsa-dai-link {
++			link-name = "WSA Playback";
++
++			cpu {
++				sound-dai = <&q6apmbedai WSA_CODEC_DMA_RX_0>;
++			};
++
++			codec {
++				sound-dai = <&left_woofer>, <&left_tweeter>,
++					    <&swr0 0>, <&lpass_wsamacro 0>,
++					    <&right_woofer>, <&right_tweeter>,
++					    <&swr3 0>, <&lpass_wsa2macro 0>;
++			};
++
++			platform {
++				sound-dai = <&q6apm>;
++			};
++		};
++
++		va-dai-link {
++			link-name = "VA Capture";
++
++			cpu {
++				sound-dai = <&q6apmbedai VA_CODEC_DMA_TX_0>;
++			};
++
++			codec {
++				sound-dai = <&lpass_vamacro 0>;
++			};
++
++			platform {
++				sound-dai = <&q6apm>;
++			};
++		};
++	};
++
++	wcd938x: audio-codec {
++		compatible = "qcom,wcd9385-codec";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&wcd_default>;
++
++		qcom,micbias1-microvolt = <1800000>;
++		qcom,micbias2-microvolt = <1800000>;
++		qcom,micbias3-microvolt = <1800000>;
++		qcom,micbias4-microvolt = <1800000>;
++		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000 500000 500000 500000 500000>;
++		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
++		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
++		qcom,rx-device = <&wcd_rx>;
++		qcom,tx-device = <&wcd_tx>;
++
++		reset-gpios = <&tlmm 191 GPIO_ACTIVE_LOW>;
++
++		vdd-buck-supply = <&vreg_l15b_1p8>;
++		vdd-rxtx-supply = <&vreg_l15b_1p8>;
++		vdd-io-supply = <&vreg_l15b_1p8>;
++		vdd-mic-bias-supply = <&vreg_bob1>;
++
++		#sound-dai-cells = <1>;
++	};
++
+ 	vreg_edp_3p3: regulator-edp-3p3 {
+ 		compatible = "regulator-fixed";
+ 
+@@ -436,6 +584,14 @@ regulators-0 {
+ 		compatible = "qcom,pm8550-rpmh-regulators";
+ 		qcom,pmic-id = "b";
+ 
++		/* Headset mic bias */
++		vreg_bob1: bob1 {
++			regulator-name = "vreg_bob1";
++			regulator-min-microvolt = <3008000>;
++			regulator-max-microvolt = <3960000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++		};
++
+ 		/* Touchpad; always on in the stock DT as well */
+ 		vreg_l1b_1p8: ldo1 {
+ 			regulator-name = "vreg_l1b_1p8";
+@@ -445,6 +601,15 @@ vreg_l1b_1p8: ldo1 {
+ 			regulator-always-on;
+ 		};
+ 
++		/* Speaker amplifier I/O */
++		vreg_l12b_1p2: ldo12 {
++			regulator-name = "vreg_l12b_1p2";
++			regulator-min-microvolt = <1200000>;
++			regulator-max-microvolt = <1200000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-always-on;
++		};
++
+ 		/* WCN785x I/O and always-on domain, always on in the stock DT */
+ 		vreg_l15b_1p8: ldo15 {
+ 			regulator-name = "vreg_l15b_1p8";
+@@ -1159,6 +1324,103 @@ &sbsa_watchdog {
+ 	status = "disabled";
+ };
+ 
++&lpass_vamacro {
++	pinctrl-0 = <&dmic01_default>;
++	pinctrl-names = "default";
++
++	vdd-micb-supply = <&vreg_l1b_1p8>;
++	/*
++	 * DMIC1 gives random full-scale samples (clicks): about 7 per 30 s at
++	 * the CRD's 4.8 MHz, 3 at 2.4 MHz, none at 1.2 MHz, which has about
++	 * 15 dB more noise though. The pins are set up as in the stock DT.
++	 */
++	qcom,dmic-sample-rate = <2400000>;
++};
++
++&swr0 {
++	pinctrl-0 = <&wsa_swr_active>, <&spkr_01_sd_n_active>;
++	pinctrl-names = "default";
++
++	status = "okay";
++
++	/* WSA884x, stock name "SpkrLeft" */
++	left_woofer: speaker@0,0 {
++		compatible = "sdw20217020400";
++		reg = <0 0>;
++		reset-gpios = <&tlmm 204 GPIO_ACTIVE_LOW>;
++		#sound-dai-cells = <0>;
++		sound-name-prefix = "WooferLeft";
++		vdd-1p8-supply = <&vreg_l15b_1p8>;
++		vdd-io-supply = <&vreg_l12b_1p2>;
++		qcom,port-mapping = <1 2 3 7 10 13>;
++	};
++
++	/* WSA884x, stock name "SpkrRight" */
++	left_tweeter: speaker@0,1 {
++		compatible = "sdw20217020400";
++		reg = <0 1>;
++		reset-gpios = <&tlmm 204 GPIO_ACTIVE_LOW>;
++		#sound-dai-cells = <0>;
++		sound-name-prefix = "TweeterLeft";
++		vdd-1p8-supply = <&vreg_l15b_1p8>;
++		vdd-io-supply = <&vreg_l12b_1p2>;
++		qcom,port-mapping = <4 5 6 7 11 13>;
++	};
++};
++
++&swr1 {
++	status = "okay";
++
++	/* WCD9385 RX */
++	wcd_rx: codec@0,4 {
++		compatible = "sdw20217010d00";
++		reg = <0 4>;
++		qcom,rx-port-mapping = <1 2 3 4 5>;
++	};
++};
++
++&swr2 {
++	status = "okay";
++
++	/* WCD9385 TX */
++	wcd_tx: codec@0,3 {
++		compatible = "sdw20217010d00";
++		reg = <0 3>;
++		qcom,tx-port-mapping = <2 2 3 4>;
++	};
++};
++
++&swr3 {
++	pinctrl-0 = <&wsa2_swr_active>, <&spkr_23_sd_n_active>;
++	pinctrl-names = "default";
++
++	status = "okay";
++
++	/* WSA884x, stock name "Spkr2Left" */
++	right_woofer: speaker@0,0 {
++		compatible = "sdw20217020400";
++		reg = <0 0>;
++		reset-gpios = <&tlmm 205 GPIO_ACTIVE_LOW>;
++		#sound-dai-cells = <0>;
++		sound-name-prefix = "WooferRight";
++		vdd-1p8-supply = <&vreg_l15b_1p8>;
++		vdd-io-supply = <&vreg_l12b_1p2>;
++		qcom,port-mapping = <1 2 3 7 10 13>;
++	};
++
++	/* WSA884x, stock name "Spkr2Right" */
++	right_tweeter: speaker@0,1 {
++		compatible = "sdw20217020400";
++		reg = <0 1>;
++		reset-gpios = <&tlmm 205 GPIO_ACTIVE_LOW>;
++		#sound-dai-cells = <0>;
++		sound-name-prefix = "TweeterRight";
++		vdd-1p8-supply = <&vreg_l15b_1p8>;
++		vdd-io-supply = <&vreg_l12b_1p2>;
++		qcom,port-mapping = <4 5 6 7 11 13>;
++	};
++};
++
+ /*
+  * Owned by the secure world; touching them raises a NoC error that
+  * QTEE treats as fatal. Same ranges as the stock DTB.
+@@ -1267,6 +1529,30 @@ usb1_pwr_3p3_reg_en: usb1-pwr-3p3-reg-en-state {
+ 		bias-disable;
+ 	};
+ 
++	spkr_01_sd_n_active: spkr-01-sd-n-active-state {
++		pins = "gpio204";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-disable;
++		output-low;
++	};
++
++	spkr_23_sd_n_active: spkr-23-sd-n-active-state {
++		pins = "gpio205";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-disable;
++		output-low;
++	};
++
++	wcd_default: wcd-reset-n-active-state {
++		pins = "gpio191";
++		function = "gpio";
++		drive-strength = <16>;
++		bias-disable;
++		output-low;
++	};
++
+ 	pcie4_default: pcie4-default-state {
+ 		clkreq-n-pins {
+ 			pins = "gpio147";
+-- 
+2.55.0
+

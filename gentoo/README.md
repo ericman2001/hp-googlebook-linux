@@ -25,6 +25,15 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
 * `usr/local/share/googlebook/` is not in the repository. Fill it with
   `rescue.cpio`, `vendor.cpio`, `placeholder.dtbo` and `vbmeta.img` from
   `tools/build-images.sh` (see [docs/INSTALL.md](../docs/INSTALL.md)).
+* Audio:
+  * `usr/share/alsa/ucm2/conf.d/x1e80100/X1E80100-Google-Quartz.conf`
+    selects the CRD's UCM profile, since there is no DMI to match on.
+  * `lib/firmware/updates/qcom/x1e80100/X1E80100-Google-Quartz-tplg.bin`
+    is a symlink to the CRD's AudioReach topology.
+  * `etc/wireplumber/.../51-googlebook-speakers.conf` gives the speaker
+    channels their real positions (left, right, right, left).
+  * `etc/pipewire/{client,pipewire-pulse}.conf.d/50-googlebook-upmix.conf`
+    copies stereo to the second speaker pair.
 * `usr/local/lib/googlebook/ath12k-board2.py`: lists and extracts
   `board-2.bin` entries, for the Wi-Fi board file
   ([docs/FIRMWARE.md](../docs/FIRMWARE.md)).

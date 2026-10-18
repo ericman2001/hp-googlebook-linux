@@ -76,6 +76,15 @@ stock device tree in `dtbo_a`.
   turns off protection for every unconfigured device, so use it only as a
   test.
 
+* **Audio is the CRD's design.** The stock sound card is even named
+  `hamoa-x1e80100-crd-wsa884x-snd-card`. The speaker PCM has four
+  channels, one per amplifier, and by ear they are left, right, right,
+  left (all four at the front edge). PipeWire assumes FL FR RL RR, so
+  without the WirePlumber rule two speakers play the wrong side.
+* **DMIC clicks:** DMIC1 gives random full-scale samples at the CRD's
+  4.8 MHz DMIC clock (~7 per 30 s), 2.4 MHz (~3) and 1.2 MHz (none, but
+  15 dB more noise). The pin setup matches the stock DT. 2.4 MHz is used.
+
 ## Board map
 
 | Function | Wiring |
@@ -87,6 +96,7 @@ stock device tree in `dtbo_a`.
 | Wi-Fi/BT (WCN7850, HP/AzureWave 103c:8e64) | PCIe 4; 3.3 V GPIO 214; WLAN_EN 117, BT_EN 116; BT on QUP1 SE6 (`uart14`) |
 | eDP panel | DP3; power GPIO 70; HPD GPIO 119; enable (EL_ON3) PMC8380 #3 GPIO 4; brightness over DPCD |
 | USB-C | Left port `usb_1_ss0` (pmic-glink connector 0), right port `usb_1_ss1` (connector 1); eUSB2 repeaters in the SMB2360s; PS8830 retimers on I²C 3 (reset PM8550 GPIO 10, RF_CLK3) and I²C 7 (reset TLMM 176, RF_CLK4); orientation GPIOs 121/123. The same as the CRD's ports 0/1 |
+| Audio | WCD938x reset TLMM 191 (L15B, BOB1 mic bias); WSA884x shutdown TLMM 204 (WSA bus) / 205 (WSA2 bus), L15B + L12B; DMIC0/1 on LPASS GPIO 6/7, mic bias 1 |
 | Display rails | eDP PHY on L2J (1.2 V) and L3J (0.88 V), shared with the USB QMP PHYs |
 
 ## Development tricks

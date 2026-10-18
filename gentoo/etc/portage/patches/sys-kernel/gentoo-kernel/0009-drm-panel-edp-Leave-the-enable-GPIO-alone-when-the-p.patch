@@ -1,7 +1,7 @@
 From 149c2085866502a0c7dfbd2ccbf9dca701ed9b6c Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:13 -0500
-Subject: [PATCH 09/14] drm/panel-edp: Leave the enable GPIO alone when the
+Subject: [PATCH 09/15] drm/panel-edp: Leave the enable GPIO alone when the
  panel is already powered
 
 When the firmware has lit the panel, its supply is still on when

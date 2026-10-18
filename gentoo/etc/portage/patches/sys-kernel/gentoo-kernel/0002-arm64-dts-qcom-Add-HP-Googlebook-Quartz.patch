@@ -1,7 +1,7 @@
 From 7de366486923ee06d80669086cf6e7b85418ce45 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:12 -0500
-Subject: [PATCH 02/14] arm64: dts: qcom: Add HP Googlebook (Quartz)
+Subject: [PATCH 02/15] arm64: dts: qcom: Add HP Googlebook (Quartz)
 
 Add initial support for the HP Googlebook "Quartz" (Google Bluey
 baseboard) with the Snapdragon X Elite (X1E80100).

@@ -1,7 +1,7 @@
 From 174e994ac23163a9b9c4b2aed3639af192d033fe Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 00:39:14 -0500
-Subject: [PATCH 11/14] iommu/arm-smmu-qcom: Use an identity domain for the
+Subject: [PATCH 11/15] iommu/arm-smmu-qcom: Use an identity domain for the
  X1E80100 ADSP
 
 When Linux runs at EL2 without a hypervisor, as on Chrome OS devices

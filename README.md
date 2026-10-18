@@ -28,7 +28,9 @@ the kernel patches are generic and should help any distribution.
 | DisplayPort alt mode | ✅ | Tested 2560×1440 at 120 Hz through a USB-C to HDMI adapter |
 | Charging | ✅ | Through the ADSP: USB-PD contract (3.25 A), about 45 W into the battery at idle. Under a 12-core build it still drains (about −36 W) on a 60 W charger |
 | Battery status | ✅ | `qcom-battmgr-bat`. The percentage is right, but time estimates are about 8× too short: the firmware reports mAh labelled as mWh |
-| Audio | ❌ | The ADSP's audio services come up; the sound card isn't described yet |
+| Speakers (4× WSA884x) | ✅ | The CRD's design; all four at the front edge. Needs the WirePlumber and PipeWire files in `gentoo/etc/` for correct stereo |
+| Internal mics (2× DMIC) | ⚠️ | Work, with an occasional click on one mic (see docs/HARDWARE.md) |
+| Headphone jack, DP audio | ❓ | Described (WCD938x, DP0/DP1) but not tested yet |
 | Suspend, webcam, fingerprint | ❓ | Not tried yet |
 
 > **Charging needs the ADSP.** Without it (for example in the rescue
