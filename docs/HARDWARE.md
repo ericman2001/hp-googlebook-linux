@@ -58,13 +58,23 @@ stock device tree in `dtbo_a`.
   there are no components to match.
 * **Charging is done by the ADSP.** coreboot runs a charging applet on the
   ADSP and then resets it before booting the OS, which is expected to load
-  the full ADSP firmware. Without it the battery does not charge: the
+  the full ADSP firmware, which patches 0011-0013 now do (see below).
+  Without it the battery does not charge: the
   SMB2360 charge status (`0x2606` bits 2:0) is 7 and the charge current
   (`0x260A`, 50 mA steps) is 0. The adapter still powers the system, so heavy
   load drains the battery. The Chrome EC has no fuel gauge here. Its battery
   data (`EC_CMD_BATTERY_GET_DYNAMIC`, memmap `0x40`) is pushed by the ADSP,
   so under Linux it is a stale snapshot from boot. The EC also does not
   support `CHARGE_STATE` or `USB_PD_POWER_INFO`.
+
+* **ADSP at EL2:** with an `iommus` property, qcom_q6v5_pas asks TrustZone
+  for a resource table (`PAS_GET_RSCTABLE`). Chrome OS TrustZone fails that
+  call with -EIO. Identity-mapping only the carveouts isn't enough either: the
+  ADSP then faults on peripherals, for example at iova `0x10c4004` next to the
+  RNG. Patches 0011/0012 give it an identity domain instead. Booting with
+  `arm-smmu.disable_bypass=0` and no `iommus` shows the same result, but it
+  turns off protection for every unconfigured device, so use it only as a
+  test.
 
 ## Board map
 

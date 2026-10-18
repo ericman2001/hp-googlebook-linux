@@ -23,20 +23,18 @@ the kernel patches are generic and should help any distribution.
 | NVMe SSD | ✅ | PCIe 6A, Gen4 ×4 |
 | Wi-Fi (WCN7850, Wi-Fi 7) | ✅ | 6 GHz / 160 MHz tested; needs a board file, see docs |
 | Bluetooth | ✅ | Same WCN7850 |
-| USB-C (both ports) | ⚠️ USB 2.0 only | USB 3 / DP alt mode need the ADSP |
-| **Charging** | ❌ | The battery does not charge under Linux (0 mA). The adapter powers the system, and heavy load drains the battery. Needs the ADSP |
-| Battery status | ❌ | The EC only mirrors the ADSP, so its values are stale. `tools/ecbatt.py` shows the live charger status |
-| Audio | ❌ | Needs the ADSP |
+| ADSP | ✅ | Device-signed firmware; identity IOMMU mapping (patches 0011/0012) |
+| USB-C (both ports) | ⚠️ USB 2.0 only | USB 3 / DP alt mode: UCSI and alt-mode wiring still to do |
+| Charging | ✅ | Through the ADSP: about 45 W into the battery at idle. Under a 12-core build it still drains (about −36 W) on a 60 W charger |
+| Battery status | ✅ | `qcom-battmgr-bat` power supply (the capacity percentage reads empty so far) |
+| Audio | ❌ | The ADSP's audio services come up; the sound card isn't described yet |
 | Suspend, webcam, fingerprint | ❓ | Not tried yet |
 
-> **Warning: charging.** Until the ADSP (audio DSP) runs under Linux, the
-> battery does **not charge**: both chargers report status 7 and 0 mA. The
-> adapter still powers the system, but a full-load job such as a 12-core
-> kernel build draws more than it supplies, and the battery makes up the
-> difference. One flattened the battery during bring-up, even on a 60 W
-> charger. Charge with the laptop **powered off**: the firmware then charges
-> normally. The Chrome EC's battery numbers are stale under Linux. The EC has
-> no fuel gauge of its own and only mirrors what the ADSP reports.
+> **Charging needs the ADSP.** Without it (for example in the rescue
+> initramfs, or with older patches) the battery does not charge at all. On a
+> 60 W charger, a full-load 12-core build still drains the battery even with
+> the ADSP running. The Chrome EC has no fuel gauge here: its battery numbers
+> are a stale snapshot. Use `/sys/class/power_supply/qcom-battmgr-bat`.
 
 ## Layout
 
@@ -74,6 +72,10 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
 4. `drm/panel-edp`: leave the enable GPIO alone when the panel is already
    powered. This is a generic fix: Samsung OLEDs otherwise stay black after the
    firmware-to-Linux handover.
+5. `iommu/arm-smmu-qcom` and `remoteproc: qcom: pas`: let the X1E80100 ADSP
+   run with an identity mapping when TrustZone can't provide a resource table.
+   Chrome OS TrustZone can't, so without these the ADSP, and with it
+   charging, never starts.
 
 The generic fixes are meant to go upstream.
 
