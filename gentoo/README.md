@@ -15,11 +15,16 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
 * `etc/kernel/install.d/90-googlebook.install` + `usr/local/sbin/googlebook-install-kernel`:
   on `kernel-install add`, pack the kernel and its DTB into the Android boot
   images (`usr/local/lib/googlebook/mkimages.py`, with the rescue initramfs
-  and files from `usr/local/share/googlebook/`) and write them to slot B,
+  and files from `usr/local/share/googlebook/`) and write them to the slot
+  Gentoo booted from (`androidboot.slot_suffix` in `/proc/bootconfig`, or
+  `/etc/googlebook/slot`),
   verified. The previous images are kept in /var/lib/googlebook/previous;
   `googlebook-install-kernel --rollback` restores them.
 * `etc/googlebook/cmdline`: the kernel command line. Add `gbnet.telnet=1`
-  only if you want the rescue shell on telnet, which has no password.
+  only if you want the rescue shell on telnet, which has no password. For
+  an encrypted root, `gbcrypt=userdata root=/dev/mapper/root` makes the
+  rescue initramfs unlock the `userdata` partition first (its rescue.cpio
+  must include cryptsetup, from `tools/build-cryptsetup.sh`).
 * `etc/NetworkManager/conf.d/googlebook.conf`: keeps the DHCP client ID to
   the MAC address and sends DNS through systemd-resolved.
 * `usr/local/share/googlebook/` is not in the repository. Fill it with

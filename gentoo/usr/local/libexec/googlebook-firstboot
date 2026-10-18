@@ -35,6 +35,13 @@ if [ ! -e "$fw/adsp.mdt" ] && dev=$(partdev modem_a); then
 	done
 fi
 
+# An encrypted root lives in userdata, which may still hold an earlier
+# install's data where this filesystem hasn't written yet. Discard all free
+# space once, so none of it stays readable.
+if [ -b /dev/mapper/root ]; then
+	fstrim / || echo "googlebook-firstboot: fstrim failed" >&2
+fi
+
 # Back up the partitions that are unique to this laptop (calibration data,
 # MAC addresses, keys). They are never written; this is for safekeeping.
 # A partition that can't be read is retried on the next boot.

@@ -18,8 +18,8 @@ the laptop and starting its fastboot mode, then:
   images    builds the boot images (kernel, rescue initramfs, DTB, vbmeta)
   rootfs    unpacks the stage3, adds the kernel modules, firmware and
             configuration, and makes an ext4 image of it (needs sudo)
-  flash     writes the boot images to slot B and the root filesystem to
-            userdata, and boots it
+  flash     writes the boot images to Gentoo's slot (usually B) and the root
+            filesystem to userdata, and boots it
   finish    waits for the new system to come up on the network
 
 Progress is kept in work/state.json, so running it again resumes where it
@@ -27,7 +27,8 @@ stopped. --from PHASE redoes PHASE and everything after it; --only PHASE
 runs just that phase.
 
 Nothing is written to the laptop before the flash phase, which asks first.
-Only slot B and userdata are written; slot A keeps stock Android.
+Only Gentoo's slot (the one stock Android isn't on, usually B) and userdata
+are written; the other slot keeps stock Android.
 """
 
 import argparse
@@ -378,11 +379,25 @@ def phase_settings(st):
         say('Unknown time zone (try e.g. America/Chicago or Europe/Berlin).')
     s['locale'] = ask('Locale', 'en_US.UTF-8')
     s['keymap'] = ask('Console keymap', 'us')
+    say(ENCRYPT_HELP)
+    s['encrypt'] = ask_yes('Encrypt the root filesystem?', default=False)
+    if s['encrypt'] and not shutil.which('cryptsetup'):
+        raise Abort('encryption needs cryptsetup on this PC too (to create the '
+                    'container); install it and run --from settings')
     keys = sorted(Path.home().glob('.ssh/id_*.pub'))
     s['ssh_key'] = ''
     if keys and ask_yes(f'Allow SSH logins with your key {keys[0]}?'):
         s['ssh_key'] = keys[0].read_text().strip()
     st['settings'] = s
+
+
+ENCRYPT_HELP = """
+The root filesystem can be encrypted (LUKS2, AES-XTS, argon2id). The laptop
+then asks for the passphrase on the screen at every boot, before Gentoo
+starts, and unlocking takes about a second. That prompt uses the US keyboard
+layout whatever keymap you chose. The passphrase is asked for when the root
+filesystem is built, and is not stored anywhere.
+"""
 
 
 def openssl_hash(password):
@@ -443,6 +458,34 @@ def phase_device(st):
                     f'move {WORK} away to start over')
     st['ip'] = ip
     st['serial'] = serial
+    choose_slot(st, ip)
+
+
+SLOT_HELP = """
+The laptop has two sets of boot partitions, slots A and B. Stock Android
+keeps running from one of them; Gentoo goes on the other. An unlocked
+laptop always starts out on the Android slot, but an Android update can
+switch which slot that is.
+"""
+
+
+def choose_slot(st, ip):
+    active = getvar(ip, 'current-slot').lstrip('_')
+    if active not in ('a', 'b'):
+        raise Abort(f'unexpected current slot "{active}"')
+    other = 'b' if active == 'a' else 'a'
+    say(SLOT_HELP)
+    say(f'The active slot is {active.upper()}.')
+    if ask_yes(f'Is slot {active.upper()} stock Android (a freshly unlocked laptop)?'):
+        slot = other
+    elif ask_yes(f'Is it a Gentoo install you want to replace?'):
+        slot = active
+    else:
+        raise Abort('not sure which slot to use; nothing was written')
+    say(f'Gentoo goes on slot {slot.upper()}; slot {("b" if slot == "a" else "a").upper()} '
+        'is left alone.')
+    st['slot'] = slot
+    st['active_slot'] = active
 
 
 def stock_dir(st):
@@ -650,6 +693,12 @@ def phase_images(st):
         say('  rescue initramfs tools: sysroot from the stage3, static busybox and kexec')
         run(['sh', str(TOP / 'tools/build-deps.sh'), str(stage3_path(st))], log='images')
     out = WORK / 'out'
+    env = {}
+    if st['settings'].get('encrypt'):
+        if not (TOP / 'src/cryptsetup/cryptsetup').exists():
+            say('  static cryptsetup for the rescue initramfs')
+            run(['sh', str(TOP / 'tools/build-cryptsetup.sh')], log='images')
+        env = {'CRYPT': 'userdata', 'ROOT': '/dev/mapper/root'}
     vbmeta = stock_dir(st) / 'vbmeta_a.img'
     if not vbmeta.exists():
         vbmeta = WORK / 'vbmeta-generated.img'
@@ -657,7 +706,7 @@ def phase_images(st):
         say('  vbmeta: generated (no stock vbmeta given)')
     run(['sh', str(TOP / 'tools/build-images.sh')], log='images', env={
         'KSRC': str(ksrc()), 'KBUILD': str(kbuild()), 'OUT': str(out),
-        'VBMETA': str(vbmeta)})
+        'VBMETA': str(vbmeta), **env})
     board = WORK / 'board.bin'
     run(['python3', '-I', str(TOP / 'gentoo/usr/local/lib/googlebook/ath12k-board2.py'),
          str(DL / 'linux-firmware/ath12k/WCN7850/hw2.0/board-2.bin'), WIFI_BOARD_ID,
@@ -675,14 +724,20 @@ def phase_rootfs(st):
         'top': str(TOP), 'work': str(WORK), 'stage3': st['stage3'],
         'kernelrelease': st['kernelrelease'], 'stock': str(stock_dir(st)),
         'settings': st['settings'], 'uid': os.getuid(), 'gid': os.getgid(),
+        'slot': st['slot'],
     }
     planfile = WORK / 'rootfs-plan.json'
     planfile.write_text(json.dumps(plan))
     os.chmod(planfile, 0o600)
+    passphrase = b''
+    if st['settings'].get('encrypt'):
+        say('Choose the passphrase for the encrypted root filesystem. Use only')
+        say('characters you can type on a US keyboard layout.')
+        passphrase = ask_password('the encrypted root filesystem').encode()
     say('This step unpacks the stage3 as root, so that file owners are right.')
     say('sudo may ask for your password.')
     r = subprocess.run(['sudo', sys.executable, '-I', str(Path(__file__).resolve()),
-                        '--root-helper', str(planfile)])
+                        '--root-helper', str(planfile)], input=passphrase)
     planfile.unlink(missing_ok=True)
     if r.returncode:
         raise Abort(f'building the root filesystem failed (log: {LOGS / "rootfs.log"})')
@@ -695,11 +750,11 @@ def phase_rootfs(st):
 
 FLASH_WARNING = """
 This writes to the laptop:
-  * boot_b, init_boot_b, vendor_boot_b, dtbo_b and vbmeta_b: the Gentoo
-    kernel and boot images (slot B)
+  * boot_{s}, init_boot_{s}, vendor_boot_{s}, dtbo_{s} and vbmeta_{s}: the
+    Gentoo kernel and boot images (slot {S})
   * userdata: the Gentoo root filesystem. Everything on it is LOST,
     including any Android data or an earlier Gentoo install.
-Slot A (stock Android) is not touched. The laptop then boots slot B.
+Slot {O} (stock Android) is not touched. The laptop then boots slot {S}.
 """
 
 
@@ -714,20 +769,25 @@ def phase_flash(st):
         st['ip'] = ip
     if getvar(ip, 'serialno') != st['serial']:
         raise Abort('this is a different laptop than the one this install was set up for')
+    slot = st['slot']
+    other = 'b' if slot == 'a' else 'a'
+    if getvar(ip, 'current-slot').lstrip('_') != st['active_slot']:
+        raise Abort('the laptop switched slots since the device phase (an Android '
+                    'update?); run the installer with --from device')
     simg = WORK / 'rootfs.simg'
     fs_size = sparse_image_size(simg)
     part = int(getvar(ip, 'partition-size:userdata'), 16)
     if fs_size > part:
         raise Abort(f'the root filesystem ({fs_size >> 30} GiB) is bigger than userdata')
-    say(FLASH_WARNING)
+    say(FLASH_WARNING.format(s=slot, S=slot.upper(), O=other.upper()))
     if ask('Type ERASE to go ahead', '') != 'ERASE':
         raise Abort('not flashed')
     out = WORK / 'out'
     for p in BOOT_IMAGES:
-        fastboot(ip, 'flash', f'{p}_b', str(out / f'{p}.img'))
+        fastboot(ip, 'flash', f'{p}_{slot}', str(out / f'{p}.img'))
     say(f'  userdata: {simg.stat().st_size >> 20} MiB, a few minutes')
     fastboot(ip, 'flash', 'userdata', str(simg))
-    fastboot(ip, 'set_active', 'b')
+    fastboot(ip, 'set_active', slot)
     say('  rebooting into Gentoo')
     fastboot(ip, 'reboot')
 
@@ -778,6 +838,7 @@ persist holds this laptop's calibration data and MAC addresses.""")
 
 def root_helper(planfile):
     plan = json.loads(Path(planfile).read_text())
+    plan['passphrase'] = sys.stdin.buffer.read()
     global LOGS
     LOGS = Path(plan['work']) / 'logs'
     try:
@@ -865,8 +926,19 @@ def build_rootfs(plan):
 
     say('  configuration')
     write('/etc/hostname', s['hostname'] + '\n')
+    # googlebook-install-kernel reads the slot from /proc/bootconfig; this
+    # is its fallback
+    write('/etc/googlebook/slot', f'_{plan["slot"]}\n')
+    rootdev = '/dev/mapper/root' if s.get('encrypt') else 'LABEL=gentoo'
     write('/etc/fstab', '# <fs>\t\t<mountpoint>\t<type>\t<opts>\t\t\t\t<dump> <pass>\n'
-          'LABEL=gentoo\t/\t\text4\tdefaults,noatime,x-systemd.growfs\t0 1\n')
+          f'{rootdev}\t/\t\text4\tdefaults,noatime,x-systemd.growfs\t0 1\n')
+    if s.get('encrypt'):
+        # The rescue initramfs unlocks userdata as /dev/mapper/root; later
+        # kernels get the same command line from here
+        edit('/etc/googlebook/cmdline', lambda t: t.replace(
+            'root=LABEL=gentoo', 'gbcrypt=userdata root=/dev/mapper/root'))
+        if 'gbcrypt=userdata' not in path('/etc/googlebook/cmdline').read_text():
+            raise Abort('could not set the encrypted root in /etc/googlebook/cmdline')
     tz = path('/etc/localtime')
     tz.unlink(missing_ok=True)
     os.symlink(f'../usr/share/zoneinfo/{s["timezone"]}', tz)
@@ -913,9 +985,12 @@ VIDEO_CARDS="freedreno"
         'it grows to the whole disk on first boot')
     if img.exists():
         img.unlink()
-    run(['truncate', '-s', str(size), str(img)], log='rootfs')
-    run(['mke2fs', '-q', '-t', 'ext4', '-L', 'gentoo', '-d', str(root), str(img)],
-        log='rootfs')
+    if s.get('encrypt'):
+        make_encrypted_fs(root, img, size, plan['passphrase'])
+    else:
+        run(['truncate', '-s', str(size), str(img)], log='rootfs')
+        run(['mke2fs', '-q', '-t', 'ext4', '-L', 'gentoo', '-d', str(root), str(img)],
+            log='rootfs')
     os.chown(img, plan['uid'], plan['gid'])
     run(['rm', '-rf', '--one-file-system', str(root)], log='rootfs')
 
@@ -1012,6 +1087,39 @@ class Fat:
                 size -= len(block)
                 if size <= 0:
                     break
+
+
+LUKS_HEADER = 16 << 20
+
+
+def make_encrypted_fs(root, img, size, passphrase):
+    """An ext4 filesystem of the given size in a LUKS2 container. Opened from
+    the whole userdata partition, the container spans all of it, so only the
+    filesystem needs to grow on first boot. The KDF cost is fixed rather than
+    benchmarked on this PC: about a second on the laptop."""
+    if not passphrase:
+        raise Abort('no passphrase given')
+    run(['truncate', '-s', str(size + LUKS_HEADER), str(img)], log='rootfs')
+    luks = ['cryptsetup', '--batch-mode', '--key-file=-']
+    r = subprocess.run(luks + ['luksFormat', '--type', 'luks2', '--label', 'gentoo-root',
+                               '--cipher', 'aes-xts-plain64', '--key-size', '512',
+                               '--sector-size', '4096', '--pbkdf', 'argon2id',
+                               '--pbkdf-memory', '1048576', '--pbkdf-parallel', '4',
+                               '--pbkdf-force-iterations', '6', str(img)],
+                       input=passphrase)
+    if r.returncode:
+        raise Abort('cryptsetup luksFormat failed')
+    name = f'gbinstall-{os.getpid()}'
+    r = subprocess.run(luks + ['open', str(img), name], input=passphrase)
+    if r.returncode:
+        raise Abort('cryptsetup open failed')
+    try:
+        # nodiscard: discarding the container file doesn't zero what the
+        # filesystem reads back, so mke2fs must write its tables itself
+        run(['mke2fs', '-q', '-t', 'ext4', '-L', 'gentoo', '-E', 'nodiscard',
+             '-d', str(root), f'/dev/mapper/{name}'], log='rootfs')
+    finally:
+        run(['cryptsetup', 'close', name], log='rootfs')
 
 
 def copy_device_firmware(modem, dest, work):

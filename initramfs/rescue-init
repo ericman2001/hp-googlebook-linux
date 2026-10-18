@@ -12,13 +12,44 @@ mount -t tmpfs tmpfs /run
 mount -t tmpfs tmpfs /tmp
 mount -t debugfs debugfs /sys/kernel/debug
 
+# gbcrypt=<GPT partition name> (or a /dev path): the root filesystem is in
+# a LUKS container there. Ask for the passphrase on the console and open it
+# as /dev/mapper/root.
+unlock() {
+	what=$1
+	for i in $(seq 50); do
+		case "$what" in
+		/dev/*) [ -b "$what" ] && break ;;
+		*)
+			u=$(grep -lx "PARTNAME=$what" /sys/class/block/*/uevent 2> /dev/null | head -1)
+			[ -n "$u" ] && what=/dev/$(basename "$(dirname "$u")") && break
+			;;
+		esac
+		sleep 0.2
+	done
+	[ -b "$what" ] || { echo "no partition $1 to unlock"; return 1; }
+	[ -b /dev/mapper/root ] && return 0
+	mkdir -p /run/cryptsetup
+	level=$(cut -f1 /proc/sys/kernel/printk)
+	dmesg -n 1
+	echo
+	echo "The root filesystem is encrypted."
+	cryptsetup open --allow-discards --tries 3 "$what" root \
+		< /dev/console > /dev/console 2>&1
+	rc=$?
+	dmesg -n "$level"
+	[ $rc = 0 ] || echo "Not unlocked. Retry with: cryptsetup open $what root; then reboot -f"
+	return $rc
+}
+
 # Boot the installed system when the command line names a root filesystem
 # (root=LABEL=..., root=UUID=... or root=/dev/...), unless gbrescue is given
 # or a key is pressed within 3 seconds. Falls back to this rescue shell.
 root=$(sed -n 's/.*\<root=\([^ ]*\).*/\1/p' /proc/cmdline)
+crypt=$(sed -n 's/.*\<gbcrypt=\([^ ]*\).*/\1/p' /proc/cmdline)
 if [ -n "$root" ] && ! grep -qw gbrescue /proc/cmdline; then
 	echo "Booting the system on $root -- press any key within 3 s for the rescue shell"
-	if ! read -t 3 -n 1 key < /dev/console; then
+	if ! read -t 3 -n 1 key < /dev/console && { [ -z "$crypt" ] || unlock "$crypt"; }; then
 		dev=
 		for i in $(seq 50); do
 			case "$root" in
@@ -72,6 +103,7 @@ Gentoo Googlebook rescue shell ($(uname -r))
   diag                     bring-up diagnostics
   cat /sys/firmware/log    firmware log
   ecprobe / ecspi          EC host command tests
+  cryptsetup               open an encrypted root (if built in)
   netshell                 telnet root shell on the LAN (no password!)
   reboot -f                restart
 

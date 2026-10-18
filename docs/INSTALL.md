@@ -40,9 +40,50 @@ Then, without anything to download by hand, it:
 3. Builds the patched kernel and the boot images on the PC.
 4. Builds an ext4 root filesystem: the stage3, the kernel modules, the
    firmware, the files from `gentoo/`, your user, passwords, time zone and
-   locale, wired networking and SSH. This step uses `sudo`.
-5. Asks you to type ERASE, then flashes the boot images to slot B and the
-   root filesystem to `userdata`, and boots it. Slot A keeps stock Android.
+   locale, wired networking and SSH. This step uses `sudo`. Optionally the
+   filesystem is encrypted (see below).
+5. Asks you to type ERASE, then flashes the boot images to Gentoo's slot and
+   the root filesystem to `userdata`, and boots it. Stock Android keeps the
+   other slot. On a freshly unlocked laptop Android is on slot A and Gentoo
+   goes on B, but an Android update can swap them, so the installer checks
+   the active slot and asks you to confirm it.
+
+### Encrypted root filesystem
+
+Answer yes to "Encrypt the root filesystem?" and the root filesystem goes
+into a LUKS2 container (AES-XTS, argon2id) that fills `userdata`. At every
+boot, after the 3-second rescue prompt, the screen asks for the passphrase;
+unlocking takes about a second. `cryptsetup` for that is cross-built
+statically by `tools/build-cryptsetup.sh` (cryptsetup 2.8 with its own
+libuuid, popt, json-c and libdevmapper, using the kernel crypto API) and
+lives in the rescue initramfs; the kernel has dm-crypt built in. The kernel
+command line carries `gbcrypt=userdata root=/dev/mapper/root`, also in
+`/etc/googlebook/cmdline`, so kernels installed later keep unlocking.
+
+* The prompt uses the US keyboard layout, whatever keymap you chose.
+* Three wrong tries leave you in the rescue shell; `reboot -f` tries again.
+* On first boot the free space is discarded once (`fstrim`), so nothing an
+  earlier, unencrypted install left on `userdata` stays readable. Discards
+  stay enabled, which reveals which blocks are in use (the usual trade-off
+  for SSDs).
+* Change the passphrase later with
+  `cryptsetup luksChangeKey /dev/disk/by-partlabel/userdata`
+  (`googlebook-postinstall` installs cryptsetup).
+
+If you ever boot stock Android again and let it install a system update, it
+writes the update to the other slot, which is Gentoo's, and Gentoo stops
+booting. To put Gentoo's boot images back without touching `userdata`, start
+fastboot and flash just those (here for slot B), from the installer's
+`work/out/`:
+
+    for p in boot init_boot vendor_boot dtbo vbmeta; do
+        fastboot -s tcp:<laptop-ip> flash ${p}_b work/out/$p.img
+    done
+    fastboot -s tcp:<laptop-ip> set_active b
+
+That boots the installer's kernel, whose modules stay installed; run
+`emerge --oneshot sys-kernel/gentoo-kernel` afterwards to flash the current
+one again.
 
 On first boot the laptop grows the root filesystem to the whole disk and
 backs up its unique partitions (`persist`, `keymaster`, `modem_a`, …) to
@@ -141,7 +182,7 @@ Then, on the running Gentoo system:
    `out/vbmeta.img` to `/usr/local/share/googlebook/`.
 3. Install the device firmware ([FIRMWARE.md](FIRMWARE.md)).
 4. `emerge sys-kernel/gentoo-kernel`. The patches apply automatically, and
-   the install hook flashes slot B. `googlebook-install-kernel --rollback`
+   the install hook flashes the slot Gentoo booted from. `googlebook-install-kernel --rollback`
    undoes the last flash.
 
 Keep the laptop **powered off while charging** until the ADSP works (see the

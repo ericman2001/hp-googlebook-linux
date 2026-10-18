@@ -1,6 +1,7 @@
 #!/bin/sh
 # Pack an installed kernel into the HP Googlebook's Android boot images and
-# write them to slot B, the slot depthcharge boots Gentoo from.
+# write them to Gentoo's slot: the one this system booted from (depthcharge
+# passes it in /proc/bootconfig), else the one in /etc/googlebook/slot.
 #
 # usage: googlebook-install-kernel <kernel version> [<kernel image>]
 #        googlebook-install-kernel --rollback
@@ -9,15 +10,22 @@
 # testing device tree changes with an installed kernel).
 #
 # Called by /etc/kernel/install.d/90-googlebook.install on "kernel-install
-# add". Only boot_b, init_boot_b, vendor_boot_b, dtbo_b and vbmeta_b on the
-# internal NVMe are written, each found by its exact GPT name, size-checked
-# and verified after writing. The previously flashed images are kept in
+# add". Only boot, init_boot, vendor_boot, dtbo and vbmeta of that slot on
+# the internal NVMe are written, each found by its exact GPT name,
+# size-checked and verified after writing. The previously flashed images are kept in
 # /var/lib/googlebook/previous for --rollback.
 set -eu
 
 share=/usr/local/share/googlebook
 state=/var/lib/googlebook
 parts="boot init_boot vendor_boot dtbo vbmeta"
+
+slot=$(sed -n 's/^androidboot\.slot_suffix = "\(_[ab]\)"$/\1/p' /proc/bootconfig 2>/dev/null)
+[ -n "$slot" ] || slot=$(cat /etc/googlebook/slot 2>/dev/null || true)
+case $slot in
+_a | _b) ;;
+*) echo "googlebook: can't tell which slot Gentoo is on (set /etc/googlebook/slot to _a or _b)" >&2; exit 1 ;;
+esac
 
 partdev() {
 	for u in /sys/class/block/nvme0n1p*/uevent; do
@@ -32,15 +40,15 @@ partdev() {
 
 flash() {	# <dir with $p.img files>
 	for p in $parts; do
-		dev=$(partdev "${p}_b")
+		dev=$(partdev "$p$slot")
 		img=$1/$p.img
 		size=$(stat -c %s "$img")
 		[ "$(( $(cat "/sys/class/block/${dev#/dev/}/size") * 512 ))" -ge "$size" ] ||
-			{ echo "googlebook: $p.img does not fit ${p}_b" >&2; exit 1; }
+			{ echo "googlebook: $p.img does not fit $p$slot" >&2; exit 1; }
 		dd if="$img" of="$dev" bs=1M conv=fsync status=none
 		[ "$(head -c "$size" "$dev" | md5sum)" = "$(md5sum < "$img")" ] ||
-			{ echo "googlebook: verifying ${p}_b FAILED" >&2; exit 1; }
-		echo "googlebook: ${p}_b ($dev) written and verified"
+			{ echo "googlebook: verifying $p$slot FAILED" >&2; exit 1; }
+		echo "googlebook: $p$slot ($dev) written and verified"
 	done
 }
 
@@ -103,10 +111,10 @@ cp "$share/vbmeta.img" "$work/vbmeta.img"
 # Keep what is flashed now, for --rollback
 mkdir -p "$state/previous"
 for p in $parts; do
-	dd if="$(partdev "${p}_b")" of="$state/previous/$p.img" bs=1M status=none
+	dd if="$(partdev "$p$slot")" of="$state/previous/$p.img" bs=1M status=none
 done
 cp "$state/kernel" "$state/previous/kernel" 2>/dev/null || true
 
 flash "$work"
 echo "$kv" > "$state/kernel"
-echo "googlebook: slot B now boots $kv"
+echo "googlebook: slot ${slot#_} now boots $kv"

@@ -4,6 +4,10 @@
 #
 # KSRC, KBUILD and OUT override the kernel source, kernel build and output
 # directories; VBMETA the stock vbmeta image (default stock/vbmeta_a.img).
+# ROOT sets the root filesystem (default LABEL=gentoo); CRYPT=<partition
+# name> makes the rescue initramfs unlock that LUKS partition first (with
+# ROOT=/dev/mapper/root). The rescue initramfs includes cryptsetup if
+# tools/build-cryptsetup.sh has built it.
 set -eu
 
 top=$(cd "$(dirname "$0")/.." && pwd)
@@ -16,7 +20,9 @@ dtb=$build/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dtb
 # root=LABEL=gentoo: the rescue init switch_roots into the installed system
 # (any key within 3 s, or gbrescue, keeps the rescue shell).
 # mem_sleep_default=s2idle: deep sleep has no resume path in this firmware.
-cmdline="console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused ${LOGLEVEL:-loglevel=7} rdinit=/init mem_sleep_default=s2idle root=LABEL=gentoo"
+cmdline="console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused ${LOGLEVEL:-loglevel=7} rdinit=/init mem_sleep_default=s2idle"
+[ -n "${CRYPT:-}" ] && cmdline="$cmdline gbcrypt=$CRYPT"
+cmdline="$cmdline root=${ROOT:-LABEL=gentoo}"
 # GBNET_TELNET=1 adds gbnet.telnet=1: the rescue shell also listens on telnet
 # with NO password. Only for bring-up on a trusted, firewalled network.
 [ "${GBNET_TELNET:-0}" = 1 ] && cmdline="$cmdline gbnet.telnet=1"
@@ -44,7 +50,12 @@ if [ "$initramfs" = rescue ]; then
 	clang --target=aarch64-unknown-linux-gnu --sysroot="$top/src/sysroot" -fuse-ld=lld \
 		-static -O2 -Wall -Wextra -o "$top/initramfs/gbkexec" "$top/initramfs/gbkexec.c"
 fi
-(cd "$top/initramfs" && "$build/usr/gen_init_cpio" "$initramfs.list") > "$out/$initramfs.cpio"
+list=$initramfs.list
+if [ "$initramfs" = rescue ] && [ -x "$top/src/cryptsetup/cryptsetup" ]; then
+	list=$out/rescue-crypt.list
+	{ cat "$top/initramfs/rescue.list"; echo "file /bin/cryptsetup ../src/cryptsetup/cryptsetup 0755 0 0"; } > "$list"
+fi
+(cd "$top/initramfs" && "$build/usr/gen_init_cpio" "$list") > "$out/$initramfs.cpio"
 # Stock vendor_boot always carries a vendor ramdisk; keep one, nearly empty
 echo 'dir /dev 0755 0 0' | "$build/usr/gen_init_cpio" - > "$out/vendor.cpio"
 
