@@ -44,9 +44,10 @@ Open items, roughly in order of value.
 
 * **Keymap at the passphrase prompt.** It's always US; load the chosen
   keymap in the rescue initramfs (busybox `loadkmap`).
-* Not yet tried: installing with HP's recovery USB drive as the source of
-  `vbmeta_a` and `modem_a`, and an install on a laptop that Android
-  updates have moved to slot B.
+* Not yet tried: an install on a laptop that Android updates have moved
+  to slot B, and an install without HP's recovery USB drive (with the
+  generated vbmeta and the DSP firmware copied from `modem_a` on first
+  boot).
 
 ## Untested
 

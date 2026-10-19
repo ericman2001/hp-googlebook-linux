@@ -3,7 +3,8 @@
 ## The installer
 
 > **Tested** with one complete run on a laptop restored to the factory image
-> and freshly unlocked, with an encrypted root and `googlebook-postinstall`.
+> and freshly unlocked, using HP's recovery USB drive, with an encrypted root
+> and `googlebook-postinstall --gnome`.
 > Reports from other laptops welcome.
 
 `tools/googlebook-installer` installs Gentoo on a Googlebook from another
