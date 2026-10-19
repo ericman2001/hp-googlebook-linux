@@ -46,8 +46,12 @@ if [ -b /dev/mapper/root ]; then
 	# To manage the passphrase: cryptsetup luksChangeKey /dev/disk/by-partlabel/userdata
 	emerge --noreplace sys-fs/cryptsetup
 fi
+install -d -m 750 /etc/sudoers.d
+grep -Eq '^[@#]includedir /etc/sudoers.d' /etc/sudoers ||
+	echo '@includedir /etc/sudoers.d' >> /etc/sudoers
 echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel
 chmod 440 /etc/sudoers.d/wheel
+visudo -c > /dev/null
 
 step "Switching from systemd-networkd to NetworkManager"
 systemctl enable NetworkManager.service
