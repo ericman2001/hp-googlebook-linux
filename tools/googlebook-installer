@@ -958,6 +958,8 @@ def build_rootfs(plan):
     with open(path('/etc/portage/make.conf'), 'a') as f:
         f.write(f"""
 # Added by googlebook-installer
+# Shorter emerge output; keep build dependencies up to date too
+EMERGE_DEFAULT_OPTS="-q --with-bdeps=y"
 MAKEOPTS="-j12 -l12"
 # Gentoo binary packages, signature-checked (see /etc/portage/binrepos.conf)
 FEATURES="${{FEATURES}} getbinpkg binpkg-request-signature"
