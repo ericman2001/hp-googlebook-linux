@@ -93,6 +93,19 @@ if [ -f "$mods/modules.builtin" ]; then
 	[ "$stale" = 0 ] || depmod -a "$kv"
 fi
 
+# The rescue initramfs loads no modules. With an encrypted root, the
+# passphrase prompt needs the keyboard (the EC, on SPI) and dm-crypt built
+# in, or the laptop can't get past it.
+if grep -q 'gbcrypt=' /etc/googlebook/cmdline; then
+	for m in platform/chrome/cros_ec_spi input/keyboard/cros_ec_keyb md/dm-crypt; do
+		grep -qx "kernel/drivers/$m.ko" "$mods/modules.builtin" 2> /dev/null || {
+			echo "googlebook: $kv has ${m##*/} as a module, so the passphrase can't be typed at boot; not flashed" >&2
+			echo "googlebook: see /etc/kernel/config.d/50-googlebook-quartz.config" >&2
+			exit 1
+		}
+	done
+fi
+
 work=$(mktemp -d /tmp/googlebook-kernel.XXXXXX)
 trap 'rm -rf "$work"' EXIT
 
