@@ -27,6 +27,27 @@ Open items, roughly in order of value.
 * **DMIC1 clicks.** One of the two internal mics clicks now and then (see
   [HARDWARE.md](HARDWARE.md)).
 
+## Upkeep
+
+* **Kernel version.** The patches target 7.2.11, and the installer and
+  `package.accept_keywords/kernel` pin it. When Gentoo drops 7.2.11 from the
+  tree, port the patches to a newer kernel and move the pins
+  (`googlebook-postinstall` stops with a message until then).
+* **The built-in fragment.** `tools/kfrag.py` builds
+  `50-googlebook-quartz.config` from the drivers bound at boot, so it misses
+  drivers that were already built in on the system it ran on but are modules
+  in Gentoo's config. That's how `CROS_EC_SPI` (the internal keyboard at the
+  passphrase prompt) and USB HID were missed. Next time the fragment is
+  regenerated, compare it with the installer kernel's `modules.builtin`.
+
+## Installer
+
+* **Keymap at the passphrase prompt.** It's always US; load the chosen
+  keymap in the rescue initramfs (busybox `loadkmap`).
+* Not yet tried: installing with HP's recovery USB drive as the source of
+  `vbmeta_a` and `modem_a`, and an install on a laptop that Android
+  updates have moved to slot B.
+
 ## Untested
 
 * Headset mic (no test hardware).

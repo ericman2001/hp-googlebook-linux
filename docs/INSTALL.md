@@ -2,9 +2,9 @@
 
 ## The installer
 
-> **New:** each phase has been tested on its own, including a container boot of
-> the root filesystem it builds on the laptop. A complete run on a freshly
-> unlocked laptop has not been done yet. Reports welcome.
+> **Tested** with one complete run on a laptop restored to the factory image
+> and freshly unlocked, with an encrypted root and `googlebook-postinstall`.
+> Reports from other laptops welcome.
 
 `tools/googlebook-installer` installs Gentoo on a Googlebook from another
 Linux PC (x86-64 or arm64), as automatically as the hardware allows:
@@ -60,7 +60,13 @@ lives in the rescue initramfs; the kernel has dm-crypt built in. The kernel
 command line carries `gbcrypt=userdata root=/dev/mapper/root`, also in
 `/etc/googlebook/cmdline`, so kernels installed later keep unlocking.
 
-* The prompt uses the US keyboard layout, whatever keymap you chose.
+* The prompt uses the US keyboard layout, whatever keymap you chose. The
+  internal keyboard and USB keyboards both work there.
+* The initramfs loads no modules, so every kernel needs the keyboard and
+  dm-crypt built in. `/etc/kernel/config.d/50-googlebook-quartz.config`
+  does that for Gentoo's kernel, and `googlebook-install-kernel` refuses to
+  flash a kernel without them. If you're ever stuck at the prompt anyway,
+  flash the installer's boot images back as described below.
 * Three wrong tries leave you in the rescue shell; `reboot -f` tries again.
 * On first boot the free space is discarded once (`fstrim`), so nothing an
   earlier, unencrypted install left on `userdata` stays readable. Discards
