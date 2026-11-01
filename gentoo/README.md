@@ -56,6 +56,11 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
 * `usr/local/lib/googlebook/ath12k-board2.py`: lists and extracts
   `board-2.bin` entries, for the Wi-Fi board file
   ([docs/FIRMWARE.md](../docs/FIRMWARE.md)).
+* `etc/portage/env/sys-auth/pambase`: drops `showfailed` from `pam_lastlog`
+  in `/etc/pam.d/system-login` whenever pambase is installed. GDM records a
+  failed login whenever its fingerprint conversation times out or doesn't
+  match, so GNOME otherwise reports failed login attempts at nearly every
+  login. Real failures still show in `lastb`.
 
 * Fingerprint reader: a Portage overlay in `var/db/repos/googlebook`, with
   `etc/portage/repos.conf/googlebook.conf` and

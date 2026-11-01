@@ -1,0 +1,10 @@
+# Googlebook: don't report "failed login attempts" at login.
+#
+# pam_lastlog's showfailed counts the failure records in /var/log/btmp, and
+# GDM writes one whenever any of its PAM conversations fails, including the
+# fingerprint one when it times out or doesn't match. With fprintd, GNOME
+# then reports a failed login at almost every login. Real password failures
+# are still in btmp (lastb) and still count for pam_faillock.
+post_src_install() {
+	sed -i -e '/pam_lastlog\.so/s/ showfailed//' "${ED}"/etc/pam.d/system-login || die
+}
