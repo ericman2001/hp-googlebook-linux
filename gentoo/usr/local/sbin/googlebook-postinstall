@@ -62,7 +62,7 @@ step "Building the Gentoo kernel with the Googlebook patches"
 if ! emerge --pretend --quiet sys-kernel/gentoo-kernel > /dev/null 2>&1; then
 	cat >&2 <<'EOF'
 sys-kernel/gentoo-kernel can't be installed as configured. The patches are
-made for 7.2.11 (see /etc/portage/package.accept_keywords/kernel); if
+made for 7.3.1 (see /etc/portage/package.accept_keywords/kernel); if
 Gentoo no longer has that version, pick one that is in the tree, keyword it
 there, and check that the patches in /etc/portage/patches still apply.
 EOF

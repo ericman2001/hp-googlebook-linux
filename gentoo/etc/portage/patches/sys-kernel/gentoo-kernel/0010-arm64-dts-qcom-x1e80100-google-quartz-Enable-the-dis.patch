@@ -1,7 +1,7 @@
-From c2e04d31c39c34bd8fb5fdfa6da99ac01754fda8 Mon Sep 17 00:00:00 2001
+From 563a0464ad129c0eb2b91b37930bcfcb460a7548 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:13 -0500
-Subject: [PATCH 10/20] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+Subject: [PATCH 10/22] arm64: dts: qcom: x1e80100-google-quartz: Enable the
  display and GPU
 
 The eDP panel (a Samsung 2880x1800 120 Hz OLED) is on DP3 and wired like
@@ -16,7 +16,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 110 insertions(+), 6 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index 98fdc6e7f..53814b3f6 100644
+index 511f62183..0c0145d52 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -5,7 +5,7 @@
@@ -28,7 +28,7 @@ index 98fdc6e7f..53814b3f6 100644
   * with the keyboard, the touchpad and touchscreen, USB 2.0 on both USB-C
   * ports, the NVMe SSD, Wi-Fi and Bluetooth. Other peripherals and the board
   * regulators are left out until their wiring is ported from the stock vendor
-@@ -171,6 +171,22 @@ vreg_pmu_pcie_1p8: ldo9 {
+@@ -168,6 +168,22 @@ vreg_pmu_pcie_1p8: ldo9 {
  		};
  	};
  
@@ -51,7 +51,7 @@ index 98fdc6e7f..53814b3f6 100644
  	vreg_nvme: regulator-nvme {
  		compatible = "regulator-fixed";
  
-@@ -284,6 +300,28 @@ vreg_l3i_0p8: ldo3 {
+@@ -336,6 +352,28 @@ vreg_l3i_0p8: ldo3 {
  			regulator-always-on;
  		};
  	};
@@ -80,7 +80,7 @@ index 98fdc6e7f..53814b3f6 100644
  };
  
  &apss_watchdog {
-@@ -298,11 +336,6 @@ &gpi_dma1 {
+@@ -350,11 +388,6 @@ &gpi_dma1 {
  	status = "okay";
  };
  
@@ -92,7 +92,7 @@ index 98fdc6e7f..53814b3f6 100644
  &i2c0 {
  	clock-frequency = <400000>;
  
-@@ -347,10 +380,64 @@ touchscreen@15 {
+@@ -399,10 +432,64 @@ touchscreen@15 {
  	};
  };
  
@@ -157,7 +157,7 @@ index 98fdc6e7f..53814b3f6 100644
  /*
   * NVMe SSD. Its MSIs go to the controller's own MSI receiver, since the GIC
   * ITS is unavailable; DMA goes through the PCIe SMMU, as in x1-el2.dtso.
-@@ -570,6 +657,16 @@ MATRIX_KEY(14, 11, KEY_PAGEDOWN)
+@@ -622,6 +709,16 @@ MATRIX_KEY(14, 11, KEY_PAGEDOWN)
  	};
  };
  
@@ -174,7 +174,7 @@ index 98fdc6e7f..53814b3f6 100644
  &smb2360_0 {
  	status = "okay";
  };
-@@ -716,6 +813,13 @@ ts_vdd_en: ts-vdd-en-state {
+@@ -768,6 +865,13 @@ ts_vdd_en: ts-vdd-en-state {
  		bias-disable;
  	};
  
@@ -189,5 +189,5 @@ index 98fdc6e7f..53814b3f6 100644
  		clkreq-n-pins {
  			pins = "gpio147";
 -- 
-2.55.0
+2.56.0
 

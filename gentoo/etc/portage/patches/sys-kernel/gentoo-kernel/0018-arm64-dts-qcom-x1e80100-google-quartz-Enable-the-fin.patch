@@ -1,7 +1,7 @@
-From 5cf34532b81a3a1fa2e879b178b75eb83b03f6f8 Mon Sep 17 00:00:00 2001
+From 70eec4f5b7781c893fef9cd2541f47843743d8e8 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 11:44:16 -0500
-Subject: [PATCH 18/20] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+Subject: [PATCH 18/22] arm64: dts: qcom: x1e80100-google-quartz: Enable the
  fingerprint reader
 
 The fingerprint reader is a ChromeOS fingerprint MCU (Google 18d1:5405,
@@ -18,10 +18,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 79 insertions(+), 3 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index b6ee8ceb2..ba557a705 100644
+index 9091eb96d..396905406 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-@@ -70,6 +70,24 @@ vreg_ts_3p3: regulator-touchscreen {
+@@ -67,6 +67,24 @@ vreg_ts_3p3: regulator-touchscreen {
  		regulator-always-on;
  	};
  
@@ -46,7 +46,7 @@ index b6ee8ceb2..ba557a705 100644
  	/* The USB webcam on usb_2, always on in the stock DT as well */
  	vreg_ucam_3p3: regulator-ucam {
  		compatible = "regulator-fixed";
-@@ -655,9 +673,8 @@ vreg_l15b_1p8: ldo15 {
+@@ -707,9 +725,8 @@ vreg_l15b_1p8: ldo15 {
  	};
  
  	/*
@@ -58,7 +58,7 @@ index b6ee8ceb2..ba557a705 100644
  	 */
  	regulators-1 {
  		compatible = "qcom,pmc8380-rpmh-regulators";
-@@ -866,6 +883,21 @@ eusb5_repeater: redriver@4b {
+@@ -914,6 +931,21 @@ eusb5_repeater: redriver@4b {
  		pinctrl-0 = <&eusb5_reset_n>;
  		pinctrl-names = "default";
  	};
@@ -80,7 +80,7 @@ index b6ee8ceb2..ba557a705 100644
  };
  
  &i2c7 {
-@@ -1413,6 +1445,35 @@ &usb_2_hsphy {
+@@ -1461,6 +1493,35 @@ &usb_2_hsphy {
  	status = "okay";
  };
  
@@ -116,7 +116,7 @@ index b6ee8ceb2..ba557a705 100644
  /* Disabled (and its MMIO reserved) in the stock DTB as well */
  &gic_its {
  	status = "disabled";
-@@ -1601,6 +1662,21 @@ eusb5_reset_n: eusb5-reset-n-state {
+@@ -1649,6 +1710,21 @@ eusb5_reset_n: eusb5-reset-n-state {
  		output-low;
  	};
  
@@ -139,5 +139,5 @@ index b6ee8ceb2..ba557a705 100644
  		pins = "gpio206";
  		function = "gpio";
 -- 
-2.55.0
+2.56.0
 

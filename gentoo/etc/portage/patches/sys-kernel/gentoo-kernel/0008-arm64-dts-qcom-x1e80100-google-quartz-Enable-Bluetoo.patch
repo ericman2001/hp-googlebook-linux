@@ -1,7 +1,7 @@
-From f4a286510e3b2009a75a2224f283088ece9290c7 Mon Sep 17 00:00:00 2001
+From fcfab01939209ac766f5ccb87f8eebe370a2cb25 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:13 -0500
-Subject: [PATCH 08/20] arm64: dts: qcom: x1e80100-google-quartz: Enable
+Subject: [PATCH 08/22] arm64: dts: qcom: x1e80100-google-quartz: Enable
  Bluetooth
 
 The Bluetooth half of the WCN785x is on QUP1 SE6 (uart14), as on other
@@ -14,7 +14,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 59 insertions(+), 39 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index 28f2c66d2..98fdc6e7f 100644
+index ccd25f3b7..511f62183 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -7,8 +7,9 @@
@@ -29,7 +29,7 @@ index 28f2c66d2..98fdc6e7f 100644
   */
  
  /dts-v1/;
-@@ -30,6 +31,10 @@ / {
+@@ -27,6 +28,10 @@ / {
  	model = "Google Quartz (HP Googlebook)";
  	compatible = "google,quartz", "qcom,x1e80100";
  
@@ -40,7 +40,7 @@ index 28f2c66d2..98fdc6e7f 100644
  	vreg_tp_3p3: regulator-touchpad {
  		compatible = "regulator-fixed";
  
-@@ -107,19 +112,15 @@ vreg_wcn_1p9: regulator-wcn-1p9 {
+@@ -104,19 +109,15 @@ vreg_wcn_1p9: regulator-wcn-1p9 {
  		vin-supply = <&vreg_wcn_3p3>;
  	};
  
@@ -67,7 +67,7 @@ index 28f2c66d2..98fdc6e7f 100644
  
  		wlan-enable-gpios = <&tlmm 117 GPIO_ACTIVE_HIGH>;
  		bt-enable-gpios = <&tlmm 116 GPIO_ACTIVE_HIGH>;
-@@ -128,44 +129,44 @@ wcn6855-pmu {
+@@ -125,44 +126,44 @@ wcn6855-pmu {
  		pinctrl-names = "default";
  
  		regulators {
@@ -130,7 +130,7 @@ index 28f2c66d2..98fdc6e7f 100644
  			};
  		};
  	};
-@@ -356,7 +357,8 @@ &mdss {
+@@ -408,7 +409,8 @@ &mdss {
   * The PHY supplies are left on by the firmware.
   */
  /*
@@ -140,7 +140,7 @@ index 28f2c66d2..98fdc6e7f 100644
   * MSIs go to the controller's own receiver and DMA through the PCIe SMMU.
   */
  &pcie4 {
-@@ -384,15 +386,15 @@ wifi@0 {
+@@ -436,15 +438,15 @@ wifi@0 {
  		compatible = "pci17cb,1107";
  		reg = <0x10000 0x0 0x0 0x0 0x0>;
  
@@ -163,7 +163,7 @@ index 28f2c66d2..98fdc6e7f 100644
  	};
  };
  
-@@ -581,6 +583,24 @@ &smb2360_1 {
+@@ -633,6 +635,24 @@ &smb2360_1 {
   * pmic_glink (orientation, roles) aren't described yet. The PHY and
   * repeater supplies are left on by the firmware.
   */
@@ -189,5 +189,5 @@ index 28f2c66d2..98fdc6e7f 100644
  	phys = <&smb2360_0_eusb2_repeater>;
  
 -- 
-2.55.0
+2.56.0
 

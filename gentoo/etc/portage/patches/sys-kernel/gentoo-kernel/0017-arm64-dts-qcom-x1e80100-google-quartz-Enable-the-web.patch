@@ -1,7 +1,7 @@
-From eaaab76d022f830584c0c496111bdf8e1d84669b Mon Sep 17 00:00:00 2001
+From 6dc376560f1fce96f7dbff786075f8639364e940 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 10:51:22 -0500
-Subject: [PATCH 17/20] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+Subject: [PATCH 17/22] arm64: dts: qcom: x1e80100-google-quartz: Enable the
  webcam
 
 The webcam is a USB 2.0 UVC camera (Quanta "HP 5MP Camera", Realtek
@@ -17,10 +17,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 94 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index ad08bc5db..b6ee8ceb2 100644
+index ba9272200..9091eb96d 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-@@ -70,6 +70,24 @@ vreg_ts_3p3: regulator-touchscreen {
+@@ -67,6 +67,24 @@ vreg_ts_3p3: regulator-touchscreen {
  		regulator-always-on;
  	};
  
@@ -45,7 +45,7 @@ index ad08bc5db..b6ee8ceb2 100644
  	vreg_wcn_3p3: regulator-wcn-3p3 {
  		compatible = "regulator-fixed";
  
-@@ -601,6 +619,14 @@ vreg_l1b_1p8: ldo1 {
+@@ -653,6 +671,14 @@ vreg_l1b_1p8: ldo1 {
  			regulator-always-on;
  		};
  
@@ -60,7 +60,7 @@ index ad08bc5db..b6ee8ceb2 100644
  		/* Speaker amplifier I/O */
  		vreg_l12b_1p2: ldo12 {
  			regulator-name = "vreg_l12b_1p2";
-@@ -610,6 +636,14 @@ vreg_l12b_1p2: ldo12 {
+@@ -662,6 +688,14 @@ vreg_l12b_1p2: ldo12 {
  			regulator-always-on;
  		};
  
@@ -75,7 +75,7 @@ index ad08bc5db..b6ee8ceb2 100644
  		/* WCN785x I/O and always-on domain, always on in the stock DT */
  		vreg_l15b_1p8: ldo15 {
  			regulator-name = "vreg_l15b_1p8";
-@@ -629,6 +663,14 @@ regulators-1 {
+@@ -681,6 +715,14 @@ regulators-1 {
  		compatible = "qcom,pmc8380-rpmh-regulators";
  		qcom,pmic-id = "e";
  
@@ -90,7 +90,7 @@ index ad08bc5db..b6ee8ceb2 100644
  		vreg_l3e_1p2: ldo3 {
  			regulator-name = "vreg_l3e_1p2";
  			regulator-min-microvolt = <1200000>;
-@@ -805,6 +847,27 @@ retimer_ss0_con_sbu_out: endpoint {
+@@ -853,6 +895,27 @@ retimer_ss0_con_sbu_out: endpoint {
  	};
  };
  
@@ -118,7 +118,7 @@ index ad08bc5db..b6ee8ceb2 100644
  &i2c7 {
  	clock-frequency = <400000>;
  
-@@ -1334,6 +1397,22 @@ &usb_1_ss1_qmpphy_out {
+@@ -1382,6 +1445,22 @@ &usb_1_ss1_qmpphy_out {
  	remote-endpoint = <&retimer_ss1_ss_in>;
  };
  
@@ -141,7 +141,7 @@ index ad08bc5db..b6ee8ceb2 100644
  /* Disabled (and its MMIO reserved) in the stock DTB as well */
  &gic_its {
  	status = "disabled";
-@@ -1514,6 +1593,21 @@ ts_vdd_en: ts-vdd-en-state {
+@@ -1562,6 +1641,21 @@ ts_vdd_en: ts-vdd-en-state {
  		bias-disable;
  	};
  
@@ -164,5 +164,5 @@ index ad08bc5db..b6ee8ceb2 100644
  		pins = "gpio70";
  		function = "gpio";
 -- 
-2.55.0
+2.56.0
 

@@ -1,8 +1,8 @@
-From 3798a7e68ba57e48f9c69e305acaad23c0a4d02a Mon Sep 17 00:00:00 2001
+From 5ceb677b09f09154674f54ae7d7bc79a9a2b79c3 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 15:32:15 -0500
-Subject: [PATCH] clk: qcom: gcc-x1e80100: Switch PCIe PHY GDSCs to retention
- mode too
+Subject: [PATCH 22/22] clk: qcom: gcc-x1e80100: Switch PCIe PHY GDSCs to
+ retention mode too
 
 The PCIe PHYs don't use runtime PM, so on system suspend genpd counts them
 as suspended and turns their GDSCs off, as PWRSTS_OFF_ON allows. The PHY
@@ -60,5 +60,5 @@ index fefacae91..9af83f128 100644
  };
  
 -- 
-2.55.0
+2.56.0
 

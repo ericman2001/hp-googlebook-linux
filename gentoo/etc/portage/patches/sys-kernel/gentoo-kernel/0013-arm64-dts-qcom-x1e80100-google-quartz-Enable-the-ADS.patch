@@ -1,7 +1,7 @@
-From 5fa57768b7b44fdbf644277755e45fecf29d4780 Mon Sep 17 00:00:00 2001
+From bab157ec9acacafe077e3d36b7ed0ce328c1acb5 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 00:39:14 -0500
-Subject: [PATCH 13/20] arm64: dts: qcom: x1e80100-google-quartz: Enable the
+Subject: [PATCH 13/22] arm64: dts: qcom: x1e80100-google-quartz: Enable the
  ADSP and battery
 
 The ADSP runs the battery charger: without it the battery doesn't charge
@@ -15,10 +15,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 25 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index 53814b3f6..390f26298 100644
+index 0c0145d52..6054e3189 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-@@ -171,6 +171,18 @@ vreg_pmu_pcie_1p8: ldo9 {
+@@ -168,6 +168,18 @@ vreg_pmu_pcie_1p8: ldo9 {
  		};
  	};
  
@@ -37,7 +37,7 @@ index 53814b3f6..390f26298 100644
  	vreg_edp_3p3: regulator-edp-3p3 {
  		compatible = "regulator-fixed";
  
-@@ -667,6 +679,19 @@ edp_bl_en: edp-bl-en-state {
+@@ -719,6 +731,19 @@ edp_bl_en: edp-bl-en-state {
  	};
  };
  
@@ -58,5 +58,5 @@ index 53814b3f6..390f26298 100644
  	status = "okay";
  };
 -- 
-2.55.0
+2.56.0
 

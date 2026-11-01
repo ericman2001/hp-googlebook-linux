@@ -1,7 +1,7 @@
-From a0c3c87b3f5fa8824c287144ad3ad94c26f37844 Mon Sep 17 00:00:00 2001
+From 246343ad0103f4ae903dc2a790b90f822ffc87d4 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:12 -0500
-Subject: [PATCH 06/20] arm64: dts: qcom: x1e80100-google-quartz: Add the
+Subject: [PATCH 06/22] arm64: dts: qcom: x1e80100-google-quartz: Add the
  touchpad and touchscreen
 
 Both are HID over I2C: a Synaptics touchpad (06CB:96E7) on QUP0 SE0 with a
@@ -16,7 +16,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 158 insertions(+), 2 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index e5593fa7a..1ef51f7ed 100644
+index 5829df66a..f1de643e2 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -6,8 +6,8 @@
@@ -38,7 +38,7 @@ index e5593fa7a..1ef51f7ed 100644
  
  #include "hamoa.dtsi"
  #include "hamoa-pmics.dtsi"
-@@ -29,6 +30,41 @@ / {
+@@ -26,6 +27,41 @@ / {
  	model = "Google Quartz (HP Googlebook)";
  	compatible = "google,quartz", "qcom,x1e80100";
  
@@ -80,7 +80,7 @@ index e5593fa7a..1ef51f7ed 100644
  	vreg_nvme: regulator-nvme {
  		compatible = "regulator-fixed";
  
-@@ -88,10 +124,30 @@ splash-region@e4800000 {
+@@ -140,10 +176,30 @@ splash-region@e4800000 {
  };
  
  /* Not reserved by a hypervisor when running at EL2 */
@@ -111,7 +111,7 @@ index e5593fa7a..1ef51f7ed 100644
  &gpi_dma1 {
  	status = "okay";
  };
-@@ -101,6 +157,50 @@ &gpi_dma1 {
+@@ -153,6 +209,50 @@ &gpi_dma1 {
   * interconnect providers don't sync_state() and keep the bandwidth that
   * the firmware-initialised display (simple-framebuffer) depends on.
   */
@@ -162,7 +162,7 @@ index e5593fa7a..1ef51f7ed 100644
  &mdss {
  	status = "okay";
  };
-@@ -135,6 +235,10 @@ &pcie_smmu {
+@@ -187,6 +287,10 @@ &pcie_smmu {
  	status = "okay";
  };
  
@@ -173,7 +173,7 @@ index e5593fa7a..1ef51f7ed 100644
  &qupv3_1 {
  	status = "okay";
  };
-@@ -354,6 +458,58 @@ nvme_reg_en: nvme-reg-en-state {
+@@ -406,6 +510,58 @@ nvme_reg_en: nvme-reg-en-state {
  		bias-disable;
  	};
  
@@ -233,5 +233,5 @@ index e5593fa7a..1ef51f7ed 100644
  		clkreq-n-pins {
  			pins = "gpio153";
 -- 
-2.55.0
+2.56.0
 

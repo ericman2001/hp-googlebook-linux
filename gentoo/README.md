@@ -76,12 +76,12 @@ Also needed on the laptop (not files here):
 
     /etc/portage/package.use/kernel:   sys-kernel/gentoo-kernel -initramfs -debug
                                        sys-kernel/installkernel -dracut
-    /etc/portage/package.accept_keywords/kernel: =sys-kernel/gentoo-kernel-7.2.11 ~arm64
-                                                 =virtual/dist-kernel-7.2.11 ~arm64
+    /etc/portage/package.accept_keywords/kernel: =sys-kernel/gentoo-kernel-7.3.1 ~arm64
+                                                 =virtual/dist-kernel-7.3.1 ~arm64
 
-The patches are made against Linux 7.2.11 and apply cleanly to it. To apply
-them to one kernel version only, rename the directory to e.g.
-`gentoo-kernel-7.2.11`.
+The patches are made against Linux 7.3.1 and apply cleanly to it, with or
+without Gentoo's own patchset. To apply them to one kernel version only,
+rename the directory to e.g. `gentoo-kernel-7.3.1`.
 
 ## What the patches do
 
@@ -113,7 +113,7 @@ them to one kernel version only, rename the directory to e.g.
 
 The patches come from the `quartz` branch of our kernel tree:
 
-    git -C src/linux-7.2.11 format-patch -o <dir> e9f1f8bd7..quartz
+    git -C src/linux-7.3.1 format-patch -o <dir> v7.3.1..quartz
 
 The `bringup` branch keeps the full debugging history, including the
 `DEBUG:` boot-checkpoint commit, which is not part of the patch series.

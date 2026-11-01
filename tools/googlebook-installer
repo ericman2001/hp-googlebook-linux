@@ -56,9 +56,9 @@ LOGS = WORK / 'logs'
 PHASES = ['check', 'settings', 'device', 'stock', 'download', 'kernel',
           'images', 'rootfs', 'flash', 'finish']
 
-KVER = '7.2.11'
+KVER = '7.3.1'
 KERNEL_URL = f'https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-{KVER}.tar.xz'
-KERNEL_SHA256 = 'fd0fc479f983a8c05313f13e9c36330fe6651cf725396748c40d5cd93fa1e6a4'
+KERNEL_SHA256 = 'fa595aad93734f829c963c2a90ef7c3673224fd7fdae7b49406e397cde2de231'
 
 STAGE3_BASE = 'https://distfiles.gentoo.org/releases/arm64/autobuilds'
 STAGE3_LATEST = f'{STAGE3_BASE}/latest-stage3-arm64-desktop-systemd.txt'
@@ -646,7 +646,7 @@ def ksrc():
 
 
 def kbuild():
-    return WORK / 'build-arm64'
+    return WORK / f'build-arm64-{KVER}'
 
 
 def kmake(*targets, log='kernel'):
@@ -1262,6 +1262,11 @@ def main():
     st = State()
     if a.ip:
         st['ip'] = a.ip
+    built = st.get('kernelrelease', '').split('-')[0]
+    if built and built != KVER and 'kernel' in st['done']:
+        say(f'The work directory has Linux {built}; this installer uses {KVER}. '
+            'Starting again from the download.')
+        st['done'] = [p for p in st['done'] if PHASES.index(p) < PHASES.index('download')]
     if a.only:
         todo = [a.only]
     else:

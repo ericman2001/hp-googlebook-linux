@@ -35,7 +35,7 @@ Then, without anything to download by hand, it:
    firmware's fastboot can't read partitions, so nothing is read from the
    laptop before Gentoo runs on it.
 2. Downloads the latest Gentoo stage3 (arm64 desktop systemd, checked with
-   Gentoo's signature), Linux 7.2.11 and the needed linux-firmware files, all
+   Gentoo's signature), Linux 7.3.1 and the needed linux-firmware files, all
    checked against known checksums. Pass it a stage3 you already have to skip
    that download.
 3. Builds the patched kernel and the boot images on the PC.
@@ -118,7 +118,7 @@ to the host.
 Commands run from a checkout of this repository. The tools expect this
 layout:
 
-    src/linux-7.2.11/     kernel git tree (patches applied, see below)
+    src/linux-7.3.1/      kernel git tree (patches applied, see below)
     src/build-arm64/      kernel build directory
     src/sysroot, src/busybox-*, src/kexec-tools-*   from tools/build-deps.sh
     stock/                your partition dumps
@@ -141,10 +141,10 @@ It is the reference for any hardware not yet supported.
 
 ### 2. Build the kernel
 
-    git clone --depth 1 --branch v7.2.11 \
-        https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git src/linux-7.2.11
-    git -C src/linux-7.2.11 am ../../gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/*.patch
-    cd src/linux-7.2.11
+    git clone --depth 1 --branch v7.3.1 \
+        https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git src/linux-7.3.1
+    git -C src/linux-7.3.1 am ../../gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/*.patch
+    cd src/linux-7.3.1
     ARCH=arm64 LLVM=1 scripts/kconfig/merge_config.sh -O ../build-arm64 -m \
         arch/arm64/configs/defconfig ../../config/quartz.config
     make O=../build-arm64 ARCH=arm64 LLVM=1 olddefconfig

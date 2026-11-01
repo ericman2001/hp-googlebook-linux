@@ -1,7 +1,7 @@
-From 44a215bfa27efaeb39444fc5fdb7558932005d3f Mon Sep 17 00:00:00 2001
+From 57be9c4cfe4c371f68dca409739951a420ca81b3 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 11:44:16 -0500
-Subject: [PATCH 20/20] gpio: cros-ec: Don't fail to probe on an EC without
+Subject: [PATCH 20/22] gpio: cros-ec: Don't fail to probe on an EC without
  GPIOs
 
 cros_ec_dev adds the GPIO cell to any EC that reports the GPIO feature,
@@ -30,5 +30,5 @@ index b48b684d8..4f2f79564 100644
  	if (!gc)
  		return -ENOMEM;
 -- 
-2.55.0
+2.56.0
 

@@ -1,7 +1,7 @@
-From c3a890fc43078e08fa46a985ed9cc483c9e068ae Mon Sep 17 00:00:00 2001
+From 6b1b21667aaafc87bbc3e0fec089fed325ef2007 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 01:17:53 -0500
-Subject: [PATCH 14/20] arm64: dts: qcom: x1e80100-google-quartz: Enable USB 3
+Subject: [PATCH 14/22] arm64: dts: qcom: x1e80100-google-quartz: Enable USB 3
  and DisplayPort on USB-C
 
 Both USB-C ports are wired like the first two on the CRD: PS8830
@@ -16,7 +16,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 441 insertions(+), 19 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index 390f26298..6118f379f 100644
+index 6054e3189..fbe54c454 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -6,10 +6,10 @@
@@ -34,7 +34,7 @@ index 390f26298..6118f379f 100644
   */
  
  /dts-v1/;
-@@ -172,8 +172,8 @@ vreg_pmu_pcie_1p8: ldo9 {
+@@ -169,8 +169,8 @@ vreg_pmu_pcie_1p8: ldo9 {
  	};
  
  	/*
@@ -45,7 +45,7 @@ index 390f26298..6118f379f 100644
  	 */
  	pmic-glink {
  		compatible = "qcom,x1e80100-pmic-glink",
-@@ -181,6 +181,179 @@ pmic-glink {
+@@ -178,6 +178,179 @@ pmic-glink {
  			     "qcom,pmic-glink";
  		#address-cells = <1>;
  		#size-cells = <0>;
@@ -225,7 +225,7 @@ index 390f26298..6118f379f 100644
  	};
  
  	vreg_edp_3p3: regulator-edp-3p3 {
-@@ -318,6 +491,13 @@ regulators-3 {
+@@ -370,6 +543,13 @@ regulators-3 {
  		compatible = "qcom,pm8550ve-rpmh-regulators";
  		qcom,pmic-id = "j";
  
@@ -239,7 +239,7 @@ index 390f26298..6118f379f 100644
  		vreg_l2j_1p2: ldo2 {
  			regulator-name = "vreg_l2j_1p2";
  			regulator-min-microvolt = <1256000>;
-@@ -334,6 +514,19 @@ vreg_l3j_0p8: ldo3 {
+@@ -386,6 +566,19 @@ vreg_l3j_0p8: ldo3 {
  			regulator-always-on;
  		};
  	};
@@ -259,7 +259,7 @@ index 390f26298..6118f379f 100644
  };
  
  &apss_watchdog {
-@@ -370,6 +563,120 @@ touchpad@2c {
+@@ -422,6 +615,120 @@ touchpad@2c {
  	};
  };
  
@@ -380,7 +380,7 @@ index 390f26298..6118f379f 100644
  &i2c8 {
  	clock-frequency = <400000>;
  
-@@ -410,6 +717,23 @@ &mdss {
+@@ -462,6 +769,23 @@ &mdss {
   * enable on PMC8380 #3 GPIO 4 and the brightness set over the AUX channel
   * (the panel has no PWM input on Quartz).
   */
@@ -404,7 +404,7 @@ index 390f26298..6118f379f 100644
  &mdss_dp3 {
  	/delete-property/ #sound-dai-cells;
  
-@@ -669,6 +993,37 @@ MATRIX_KEY(14, 11, KEY_PAGEDOWN)
+@@ -721,6 +1045,37 @@ MATRIX_KEY(14, 11, KEY_PAGEDOWN)
  	};
  };
  
@@ -442,7 +442,7 @@ index 390f26298..6118f379f 100644
  &pmc8380_3_gpios {
  	edp_bl_en: edp-bl-en-state {
  		pins = "gpio4";
-@@ -692,6 +1047,17 @@ &remoteproc_adsp {
+@@ -744,6 +1099,17 @@ &remoteproc_adsp {
  	status = "okay";
  };
  
@@ -460,7 +460,7 @@ index 390f26298..6118f379f 100644
  &smb2360_0 {
  	status = "okay";
  };
-@@ -700,11 +1066,6 @@ &smb2360_1 {
+@@ -752,11 +1118,6 @@ &smb2360_1 {
  	status = "okay";
  };
  
@@ -472,7 +472,7 @@ index 390f26298..6118f379f 100644
  /* Bluetooth half of the WCN785x */
  &uart14 {
  	status = "okay";
-@@ -723,38 +1084,71 @@ bluetooth {
+@@ -775,38 +1136,71 @@ bluetooth {
  	};
  };
  
@@ -552,7 +552,7 @@ index 390f26298..6118f379f 100644
  /* Disabled (and its MMIO reserved) in the stock DTB as well */
  &gic_its {
  	status = "disabled";
-@@ -845,6 +1239,34 @@ edp_reg_en: edp-reg-en-state {
+@@ -897,6 +1291,34 @@ edp_reg_en: edp-reg-en-state {
  		bias-disable;
  	};
  
@@ -588,5 +588,5 @@ index 390f26298..6118f379f 100644
  		clkreq-n-pins {
  			pins = "gpio147";
 -- 
-2.55.0
+2.56.0
 

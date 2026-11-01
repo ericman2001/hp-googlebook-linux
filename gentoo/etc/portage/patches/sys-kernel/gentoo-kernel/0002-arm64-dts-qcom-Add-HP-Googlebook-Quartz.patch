@@ -1,7 +1,7 @@
-From 7de366486923ee06d80669086cf6e7b85418ce45 Mon Sep 17 00:00:00 2001
+From fd4887a340bcd26dce7f84bd922e6e4dc20417b0 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:12 -0500
-Subject: [PATCH 02/20] arm64: dts: qcom: Add HP Googlebook (Quartz)
+Subject: [PATCH 02/22] arm64: dts: qcom: Add HP Googlebook (Quartz)
 
 Add initial support for the HP Googlebook "Quartz" (Google Bluey
 baseboard) with the Snapdragon X Elite (X1E80100).
@@ -27,15 +27,15 @@ The Chrome EC (keyboard included, with its Fn layer) is on QUP SE13 SPI.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
  arch/arm64/boot/dts/qcom/Makefile             |   3 +
- .../boot/dts/qcom/x1e80100-google-quartz.dts  | 254 ++++++++++++++++++
- 2 files changed, 257 insertions(+)
+ .../boot/dts/qcom/x1e80100-google-quartz.dts  | 306 ++++++++++++++++++
+ 2 files changed, 309 insertions(+)
  create mode 100644 arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 
 diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
-index 6f33c4e2f..40ff6f644 100644
+index 1c86e7e98..14c6f77ea 100644
 --- a/arch/arm64/boot/dts/qcom/Makefile
 +++ b/arch/arm64/boot/dts/qcom/Makefile
-@@ -427,6 +427,9 @@ x1e80100-dell-latitude-7455-el2-dtbs	:= x1e80100-dell-latitude-7455.dtb x1-el2.d
+@@ -439,6 +439,9 @@ x1e80100-dell-latitude-7455-el2-dtbs	:= x1e80100-dell-latitude-7455.dtb x1-el2.d
  dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-dell-latitude-7455.dtb x1e80100-dell-latitude-7455-el2.dtb
  x1e80100-dell-xps13-9345-el2-dtbs	:= x1e80100-dell-xps13-9345.dtb x1-el2.dtbo
  dtb-$(CONFIG_ARCH_QCOM)	+= x1e80100-dell-xps13-9345.dtb x1e80100-dell-xps13-9345-el2.dtb
@@ -47,10 +47,10 @@ index 6f33c4e2f..40ff6f644 100644
  x1e80100-hp-omnibook-x14-el2-dtbs	:= x1e80100-hp-omnibook-x14.dtb x1-el2.dtbo
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 new file mode 100644
-index 000000000..e2d147da3
+index 000000000..feb8cf08e
 --- /dev/null
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,306 @@
 +// SPDX-License-Identifier: BSD-3-Clause
 +/*
 + * HP Googlebook "Quartz" (Google Bluey baseboard), Snapdragon X Elite.
@@ -71,9 +71,6 @@ index 000000000..e2d147da3
 +
 +/* Placed differently by this firmware, recreated below at the stock addresses */
 +/delete-node/ &adsp_rpc_remote_heap_mem;
-+/delete-node/ &tz_stat_mem;
-+/* Used by the Windows firmware's XBL only; not reserved in the stock map */
-+/delete-node/ &xbl_tmp_buffer_mem;
 +
 +/ {
 +	model = "Google Quartz (HP Googlebook)";
@@ -103,6 +100,61 @@ index 000000000..e2d147da3
 +
 +		tz_stat_mem: tz-stat@82800000 {
 +			reg = <0x0 0x82800000 0x0 0x100000>;
++			no-map;
++		};
++
++		/*
++		 * hamoa.dtsi stopped reserving these in 7.3, as UEFI firmware
++		 * lists them in its memory map. Coreboot doesn't, and the stock
++		 * DT reserves most of them, so keep the map Linux 7.2 used.
++		 */
++		hyp-elf-package@80800000 {
++			reg = <0x0 0x80800000 0x0 0x200000>;
++			no-map;
++		};
++
++		ncc@80a00000 {
++			reg = <0x0 0x80a00000 0x0 0x400000>;
++			no-map;
++		};
++
++		xbl-dtlog@81a00000 {
++			reg = <0x0 0x81a00000 0x0 0x40000>;
++			no-map;
++		};
++
++		pdp-ns-shared@81e00000 {
++			reg = <0x0 0x81e00000 0x0 0x100000>;
++			no-map;
++		};
++
++		gpu-prr@81f00000 {
++			reg = <0x0 0x81f00000 0x0 0x10000>;
++			no-map;
++		};
++
++		tpm-control@81f10000 {
++			reg = <0x0 0x81f10000 0x0 0x10000>;
++			no-map;
++		};
++
++		usb-ucsi-shared@81f20000 {
++			reg = <0x0 0x81f20000 0x0 0x10000>;
++			no-map;
++		};
++
++		pld-pep@81f30000 {
++			reg = <0x0 0x81f30000 0x0 0x6000>;
++			no-map;
++		};
++
++		pld-gmu@81f36000 {
++			reg = <0x0 0x81f36000 0x0 0x1000>;
++			no-map;
++		};
++
++		pld-pdp@81f37000 {
++			reg = <0x0 0x81f37000 0x0 0x1000>;
 +			no-map;
 +		};
 +
@@ -306,5 +358,5 @@ index 000000000..e2d147da3
 +	};
 +};
 -- 
-2.55.0
+2.56.0
 

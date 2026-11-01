@@ -1,7 +1,7 @@
-From 39f070f671fb7fcbd3760fe138487b3cd89c0dc8 Mon Sep 17 00:00:00 2001
+From 7f7bd9ea81815bbf17e4d00b30174ca2b476a166 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 02:47:18 -0500
-Subject: [PATCH 15/20] arm64: dts: qcom: x1e80100-google-quartz: Enable audio
+Subject: [PATCH 15/22] arm64: dts: qcom: x1e80100-google-quartz: Enable audio
 
 Quartz uses the CRD's audio design (the stock sound card is even named
 "hamoa-x1e80100-crd-wsa884x-snd-card"): a WCD938x headset codec on
@@ -19,7 +19,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 288 insertions(+), 2 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index 6118f379f..4a4af4de9 100644
+index fbe54c454..6747c8188 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -7,8 +7,8 @@
@@ -33,7 +33,7 @@ index 6118f379f..4a4af4de9 100644
   * out until their wiring is ported from the stock vendor device tree.
   */
  
-@@ -356,6 +356,154 @@ vreg_rtmr1_3p3: regulator-rtmr1-3p3 {
+@@ -353,6 +353,154 @@ vreg_rtmr1_3p3: regulator-rtmr1-3p3 {
  		regulator-boot-on;
  	};
  
@@ -188,7 +188,7 @@ index 6118f379f..4a4af4de9 100644
  	vreg_edp_3p3: regulator-edp-3p3 {
  		compatible = "regulator-fixed";
  
-@@ -436,6 +584,14 @@ regulators-0 {
+@@ -488,6 +636,14 @@ regulators-0 {
  		compatible = "qcom,pm8550-rpmh-regulators";
  		qcom,pmic-id = "b";
  
@@ -203,7 +203,7 @@ index 6118f379f..4a4af4de9 100644
  		/* Touchpad; always on in the stock DT as well */
  		vreg_l1b_1p8: ldo1 {
  			regulator-name = "vreg_l1b_1p8";
-@@ -445,6 +601,15 @@ vreg_l1b_1p8: ldo1 {
+@@ -497,6 +653,15 @@ vreg_l1b_1p8: ldo1 {
  			regulator-always-on;
  		};
  
@@ -219,7 +219,7 @@ index 6118f379f..4a4af4de9 100644
  		/* WCN785x I/O and always-on domain, always on in the stock DT */
  		vreg_l15b_1p8: ldo15 {
  			regulator-name = "vreg_l15b_1p8";
-@@ -1159,6 +1324,103 @@ &sbsa_watchdog {
+@@ -1211,6 +1376,103 @@ &sbsa_watchdog {
  	status = "disabled";
  };
  
@@ -323,7 +323,7 @@ index 6118f379f..4a4af4de9 100644
  /*
   * Owned by the secure world; touching them raises a NoC error that
   * QTEE treats as fatal. Same ranges as the stock DTB.
-@@ -1267,6 +1529,30 @@ usb1_pwr_3p3_reg_en: usb1-pwr-3p3-reg-en-state {
+@@ -1319,6 +1581,30 @@ usb1_pwr_3p3_reg_en: usb1-pwr-3p3-reg-en-state {
  		bias-disable;
  	};
  
@@ -355,5 +355,5 @@ index 6118f379f..4a4af4de9 100644
  		clkreq-n-pins {
  			pins = "gpio147";
 -- 
-2.55.0
+2.56.0
 

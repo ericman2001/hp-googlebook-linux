@@ -1,0 +1,50 @@
+From 6c86ec41d66dc10ece070b8a40ae9adad9b76f54 Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 18 Oct 2026 04:01:10 -0500
+Subject: [PATCH 16/22] arm64: dts: qcom: x1e80100-google-quartz: Use the stock
+ idle-state latencies
+
+hamoa.dtsi has had the system-wide idle state (domain_ss3) since 7.3
+and shortened the cluster_cl5 latencies at the same time. Keep the
+values from the stock Quartz DT, which Google's firmware was tuned
+with and which Linux 7.2 used here: 2200/4000/7000 us for the cluster
+state and 2800/4400/10150 us for system sleep.
+
+With the system idle state, the SoC spends most of its idle time in
+system sleep.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/qcom/x1e80100-google-quartz.dts     | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+index 6747c8188..ba9272200 100644
+--- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
+@@ -746,6 +746,22 @@ vreg_l2d_0p9: ldo2 {
+ 	};
+ };
+ 
++/*
++ * Idle-state latencies as in the stock DT, which Google's firmware was
++ * tuned with; hamoa.dtsi uses shorter ones since 7.3.
++ */
++&cluster_cl5 {
++	entry-latency-us = <2200>;
++	exit-latency-us = <4000>;
++	min-residency-us = <7000>;
++};
++
++&domain_ss3 {
++	entry-latency-us = <2800>;
++	exit-latency-us = <4400>;
++	min-residency-us = <10150>;
++};
++
+ &apss_watchdog {
+ 	status = "okay";
+ };
+-- 
+2.56.0
+

@@ -11,7 +11,7 @@
 set -eu
 
 top=$(cd "$(dirname "$0")/.." && pwd)
-src=${KSRC:-$top/src/linux-7.2.11}
+src=${KSRC:-$top/src/linux-7.3.1}
 build=${KBUILD:-$top/src/build-arm64}
 out=${OUT:-$top/out}
 vbmeta=${VBMETA:-$top/stock/vbmeta_a.img}

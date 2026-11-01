@@ -1,7 +1,7 @@
-From a7bb754ff6c1e4069183409a2309a466d16c0468 Mon Sep 17 00:00:00 2001
+From 42325e5f80fcead86adb40e44acab95c49350c12 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:12 -0500
-Subject: [PATCH 01/20] spi: geni-qcom: Release CS left asserted when a message
+Subject: [PATCH 01/22] spi: geni-qcom: Release CS left asserted when a message
  ends without a transfer
 
 The GENI hardware drives CS itself and keeps it asserted after a transfer
@@ -24,10 +24,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 38 insertions(+)
 
 diff --git a/drivers/spi/spi-geni-qcom.c b/drivers/spi/spi-geni-qcom.c
-index 1fd9cf6e3..94f70dccd 100644
+index 6c57f8309..d34413851 100644
 --- a/drivers/spi/spi-geni-qcom.c
 +++ b/drivers/spi/spi-geni-qcom.c
-@@ -797,6 +797,42 @@ static void geni_spi_handle_rx(struct spi_geni_master *mas)
+@@ -816,6 +816,42 @@ static void geni_spi_handle_rx(struct spi_geni_master *mas)
  	mas->rx_rem_bytes -= rx_bytes;
  }
  
@@ -70,7 +70,7 @@ index 1fd9cf6e3..94f70dccd 100644
  static int setup_se_xfer(struct spi_transfer *xfer,
  				struct spi_geni_master *mas,
  				u16 mode, struct spi_controller *spi)
-@@ -876,6 +912,7 @@ static int setup_se_xfer(struct spi_transfer *xfer,
+@@ -895,6 +931,7 @@ static int setup_se_xfer(struct spi_transfer *xfer,
  	if (list_is_last(&xfer->transfer_list, &spi->cur_msg->transfers) ?
  	    xfer->cs_change : !xfer->cs_change)
  		m_params = FRAGMENTATION;
@@ -78,7 +78,7 @@ index 1fd9cf6e3..94f70dccd 100644
  
  	/*
  	 * Lock around right before we start the transfer since our
-@@ -1102,6 +1139,7 @@ static int spi_geni_probe(struct platform_device *pdev)
+@@ -1118,6 +1155,7 @@ static int spi_geni_probe(struct platform_device *pdev)
  	spi->max_dma_len = 0xffff0; /* 24 bits for tx/rx dma length */
  	spi->prepare_message = spi_geni_prepare_message;
  	spi->transfer_one = spi_geni_transfer_one;
@@ -87,5 +87,5 @@ index 1fd9cf6e3..94f70dccd 100644
  	spi->dma_map_dev = dev->parent;
  	spi->auto_runtime_pm = true;
 -- 
-2.55.0
+2.56.0
 

@@ -33,7 +33,7 @@ firmware: genpd turned the PCIe GDSCs (power domains) off at
 
 1. The PCIe controller GDSC (`gcc_pcie_4_gdsc`, Wi-Fi) didn't come back on
    at resume: `gcc_pcie_4_gdsc status stuck at 'off'`. Patch 0021, an
-   upstream patch from January 2026 not yet in 7.2, switches the controller
+   upstream patch from January 2026 not yet in 7.3, switches the controller
    GDSCs to `PWRSTS_RET_ON`.
 2. The PCIe PHYs don't use runtime PM, so genpd counts them as suspended and
    turns their GDSCs off too. The PHY then loses its state while the

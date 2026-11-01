@@ -1,7 +1,7 @@
-From 1e2fb8fdc64c62fecc8444046ae522f5fc538592 Mon Sep 17 00:00:00 2001
+From 4556e52163dad906837db6e0ee937146ac7281eb Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:13 -0500
-Subject: [PATCH 07/20] arm64: dts: qcom: x1e80100-google-quartz: Enable Wi-Fi
+Subject: [PATCH 07/22] arm64: dts: qcom: x1e80100-google-quartz: Enable Wi-Fi
 
 The WCN785x M.2 module (HP/AzureWave, PCI subsystem 103c:8e64) sits on
 PCIe 4 and is wired like the HP OmniBook X14's: a GPIO-switched 3.3 V
@@ -16,7 +16,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 224 insertions(+), 1 deletion(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index 1ef51f7ed..28f2c66d2 100644
+index f1de643e2..ccd25f3b7 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -7,7 +7,7 @@
@@ -28,7 +28,7 @@ index 1ef51f7ed..28f2c66d2 100644
   * until their wiring is ported from the stock vendor device tree.
   */
  
-@@ -65,6 +65,111 @@ vreg_ts_3p3: regulator-touchscreen {
+@@ -62,6 +62,111 @@ vreg_ts_3p3: regulator-touchscreen {
  		regulator-always-on;
  	};
  
@@ -140,7 +140,7 @@ index 1ef51f7ed..28f2c66d2 100644
  	vreg_nvme: regulator-nvme {
  		compatible = "regulator-fixed";
  
-@@ -137,6 +242,46 @@ vreg_l1b_1p8: ldo1 {
+@@ -189,6 +294,46 @@ vreg_l1b_1p8: ldo1 {
  			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
  			regulator-always-on;
  		};
@@ -187,7 +187,7 @@ index 1ef51f7ed..28f2c66d2 100644
  	};
  };
  
-@@ -210,6 +355,47 @@ &mdss {
+@@ -262,6 +407,47 @@ &mdss {
   * ITS is unavailable; DMA goes through the PCIe SMMU, as in x1-el2.dtso.
   * The PHY supplies are left on by the firmware.
   */
@@ -235,7 +235,7 @@ index 1ef51f7ed..28f2c66d2 100644
  &pcie6a {
  	/delete-property/ msi-map;
  	iommu-map = <0 &pcie_smmu 0x60000 0x10000>;
-@@ -510,6 +696,43 @@ ts_vdd_en: ts-vdd-en-state {
+@@ -562,6 +748,43 @@ ts_vdd_en: ts-vdd-en-state {
  		bias-disable;
  	};
  
@@ -280,5 +280,5 @@ index 1ef51f7ed..28f2c66d2 100644
  		clkreq-n-pins {
  			pins = "gpio153";
 -- 
-2.55.0
+2.56.0
 

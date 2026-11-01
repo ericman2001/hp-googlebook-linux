@@ -1,7 +1,7 @@
-From 4bdb7e71f0314df565cab988cc7bea8ae1d02e3f Mon Sep 17 00:00:00 2001
+From 41ebb6e7966122925bf1018c9ac05c22db27cf9a Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sat, 17 Oct 2026 23:35:12 -0500
-Subject: [PATCH 03/20] arm64: dts: qcom: x1e80100-google-quartz: Enable USB
+Subject: [PATCH 03/22] arm64: dts: qcom: x1e80100-google-quartz: Enable USB
  2.0 on the USB-C ports
 
 Include the PMICs and enable the two SMB2360s whose eUSB2 repeaters serve
@@ -15,7 +15,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 48 insertions(+), 2 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
-index e2d147da3..e6f935c42 100644
+index feb8cf08e..f875e1916 100644
 --- a/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-google-quartz.dts
 @@ -5,8 +5,8 @@
@@ -37,7 +37,7 @@ index e2d147da3..e6f935c42 100644
  
  /* Placed differently by this firmware, recreated below at the stock addresses */
  /delete-node/ &adsp_rpc_remote_heap_mem;
-@@ -228,6 +229,51 @@ MATRIX_KEY(14, 11, KEY_PAGEDOWN)
+@@ -280,6 +281,51 @@ MATRIX_KEY(14, 11, KEY_PAGEDOWN)
  	};
  };
  
@@ -90,5 +90,5 @@ index e2d147da3..e6f935c42 100644
  &gic_its {
  	status = "disabled";
 -- 
-2.55.0
+2.56.0
 

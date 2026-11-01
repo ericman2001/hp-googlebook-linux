@@ -1,7 +1,7 @@
-From d4cf29821cce23af948af78aa0c28365e0ce7ab7 Mon Sep 17 00:00:00 2001
+From 8aa5524cc955699527f9f53f035349945de28a40 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 11:44:16 -0500
-Subject: [PATCH 19/20] platform/chrome: Add a USB transport for the ChromeOS
+Subject: [PATCH 19/22] platform/chrome: Add a USB transport for the ChromeOS
  EC
 
 Some ChromeOS MCUs take host commands over a vendor USB interface, as
@@ -469,5 +469,5 @@ index 000000000..61ef427b8
 +MODULE_LICENSE("GPL");
 +MODULE_DESCRIPTION("ChromeOS EC multi function device (USB)");
 -- 
-2.55.0
+2.56.0
 

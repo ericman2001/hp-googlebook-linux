@@ -29,8 +29,8 @@ Open items, roughly in order of value.
 
 ## Upkeep
 
-* **Kernel version.** The patches target 7.2.11, and the installer and
-  `package.accept_keywords/kernel` pin it. When Gentoo drops 7.2.11 from the
+* **Kernel version.** The patches target 7.3.1, and the installer and
+  `package.accept_keywords/kernel` pin it. When Gentoo drops 7.3.1 from the
   tree, port the patches to a newer kernel and move the pins
   (`googlebook-postinstall` stops with a message until then).
 * **The built-in fragment.** `tools/kfrag.py` builds

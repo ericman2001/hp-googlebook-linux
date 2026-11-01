@@ -7,8 +7,9 @@ from A/B partitions. This project puts a mainline kernel with a new device
 tree on slot B and leaves slot A (stock) alone, so the stock system stays one
 `fastboot set_active a` away.
 
-Everything here was brought up on Linux 7.2.11 and a Gentoo arm64 stage3, but
-the kernel patches are generic and should help any distribution.
+Everything here was brought up on Linux 7.2.11 and a Gentoo arm64 stage3 and
+now targets 7.3.1. The kernel patches are generic and should help any
+distribution.
 
 ## Install
 
@@ -82,7 +83,7 @@ The docs explain how to produce each from your own laptop.
 
 ## Kernel patches
 
-In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
+In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.3.1:
 
 1. `spi: geni-qcom`: release a chip select left asserted. This is a generic
    fix: without it, the Chrome EC rejects every command after the first.
@@ -94,8 +95,9 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
 4. `drm/panel-edp`: leave the enable GPIO alone when the panel is already
    powered. This is a generic fix: Samsung OLEDs otherwise stay black after the
    firmware-to-Linux handover.
-5. The system-wide PSCI idle state that `hamoa.dtsi` leaves as a TODO
-   (patch 0016), from the stock DT.
+5. The idle-state latencies from the stock DT (patch 0016). Up to 7.2 this
+   patch added the system-wide PSCI idle state itself; `hamoa.dtsi` has it
+   since 7.3.
 6. `iommu/arm-smmu-qcom` and `remoteproc: qcom: pas`: let the X1E80100 ADSP
    run with an identity mapping when TrustZone can't provide a resource table.
    Chrome OS TrustZone can't, so without these the ADSP, and with it
@@ -107,7 +109,7 @@ In `gentoo/etc/portage/patches/sys-kernel/gentoo-kernel/`, against Linux 7.2.11:
    fingerprint MCU. Generic fix.
 9. `clk: qcom: gcc-x1e80100`: put the PCIe controller and PHY GDSCs in
    retention instead of off during suspend. The controller half is an upstream
-   patch not yet in 7.2; the PHY half is ours. Without them, resuming from
+   patch not yet in 7.3; the PHY half is ours. Without them, resuming from
    s2idle resets the SoC.
 
 The generic fixes are meant to go upstream.
