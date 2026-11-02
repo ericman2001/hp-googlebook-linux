@@ -1,0 +1,13 @@
+# HP Googlebook (Quartz) built-in keyboard, driven by cros_ec_keyb.
+#
+# The key in the Caps Lock position is matrix (row 6, col 15). The stock
+# keymap sends KEY_CONTEXTUAL_INSERT (the Googlebook OS emoji/insert key),
+# and only Fn+key sends KEY_CAPSLOCK. Make the plain key Caps Lock.
+#
+# Scancode = (row << 5) | col, because the driver's row_shift is
+# get_count_order(18 columns) = 5. (6 << 5) | 15 = 207 = 0xcf.
+#
+# Apply without rebooting:
+#   systemd-hwdb update && udevadm trigger -s input
+evdev:name:cros_ec:*
+ KEYBOARD_KEY_cf=capslock

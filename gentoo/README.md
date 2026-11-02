@@ -25,6 +25,9 @@ kernels with Portage. Copy the `etc/` and `usr/` trees onto the laptop
   an encrypted root, `gbcrypt=userdata root=/dev/mapper/root` makes the
   rescue initramfs unlock the `userdata` partition first (its rescue.cpio
   must include cryptsetup, from `tools/build-cryptsetup.sh`).
+* `etc/udev/hwdb.d/61-googlebook-keyboard.hwdb`: makes the key in the Caps
+  Lock position send Caps Lock without Fn (the stock keymap sends the
+  Googlebook OS emoji/insert key). Run `systemd-hwdb update` after copying.
 * `etc/NetworkManager/conf.d/googlebook.conf`: keeps the DHCP client ID to
   the MAC address and sends DNS through systemd-resolved.
 * `usr/local/share/googlebook/` is not in the repository. Fill it with
