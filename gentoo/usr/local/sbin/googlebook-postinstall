@@ -10,7 +10,8 @@
 #     wireless-regdb and alsa-ucm-conf
 #   * sys-kernel/gentoo-kernel with the Googlebook patches; its install hook
 #     flashes Gentoo's slot, so the next boot runs it
-#   * with --gnome: the GNOME desktop profile, GNOME, GDM and fprintd
+#   * with --gnome: the GNOME desktop profile, GNOME, GDM, fprintd and
+#     PipeWire enabled for every user
 #   * no more "run googlebook-postinstall" message (/etc/motd) and no
 #     "failed login attempts" message caused by fingerprint timeouts
 #
@@ -78,6 +79,8 @@ if [ "$gnome" = 1 ]; then
 	emerge --update --deep --newuse @world
 	emerge --noreplace gnome-base/gnome gnome-base/gdm sys-auth/fprintd
 	systemctl enable gdm.service bluetooth.service
+	# Gentoo leaves PipeWire's user units disabled: no sound in GNOME without
+	systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service
 fi
 
 step "Tidying up the login messages"
