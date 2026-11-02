@@ -40,7 +40,7 @@ the Gentoo stage3 and the kernel itself. See [docs/INSTALL.md](docs/INSTALL.md).
 | USB-C (both ports) | ✅ | USB 3 (SuperSpeed tested), orientation, roles. Wired like the CRD's first two ports, with PS8830 retimers |
 | DisplayPort alt mode | ✅ | Tested 2560×1440 at 120 Hz through a USB-C to HDMI adapter |
 | Charging | ✅ | Through the ADSP: USB-PD contract (3.25 A), about 45 W into the battery at idle. Under a 12-core build it still drains (about −36 W) on a 60 W charger |
-| Battery status | ✅ | `qcom-battmgr-bat`; GNOME shows the percentage and charging state. The percentage is right, but time estimates are about 8× too short: the firmware reports mAh labelled as mWh |
+| Battery status | ✅ | `qcom-battmgr-bat`; GNOME shows the percentage, charging state and time left. The firmware reports mAh labelled as mWh; patch 0023 takes them as mAh |
 | Speakers (4× WSA884x) | ✅ | The CRD's design; all four at the front edge. Needs the PipeWire upmix setting in `gentoo/etc/pipewire/` so stereo reaches all four |
 | Internal mics (2× DMIC) | ⚠️ | Work, with an occasional click on one mic (see docs/HARDWARE.md) |
 | Headphone jack | ✅ | WCD938x; the headset mic is untested (no test hardware) |

@@ -1,7 +1,7 @@
 From f256688d9f80d1640a7398a93730a70cf18ff47a Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 15:12:57 -0500
-Subject: [PATCH 21/22] clk: qcom: gcc-x1e80100: Switch PCIe GDSCs to retention
+Subject: [PATCH 21/23] clk: qcom: gcc-x1e80100: Switch PCIe GDSCs to retention
  mode
 
 With PWRSTS_OFF_ON, PCIe GDSCs are turned off during gdsc_disable(). This

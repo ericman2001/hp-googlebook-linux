@@ -1,0 +1,67 @@
+From 2cd855638d3ba0bd6c18cc73475d5f22fec0585d Mon Sep 17 00:00:00 2001
+From: ericman2001 <ericman2001@hotmail.com>
+Date: Sun, 1 Nov 2026 19:30:06 -0600
+Subject: [PATCH 23/23] power: supply: qcom_battmgr: Take the HP Googlebook's
+ capacities as mAh
+
+The battery firmware of the HP Googlebook (Quartz) reports its
+capacities in mAh while the power_unit field of the battery information
+claims mWh. The ~70 Wh pack (9080 mAh design, 2S) then shows up as a
+9 Wh one in energy_*, and userspace estimates the time left about eight
+times too short.
+
+Treat the unit as mAh on this machine, so that the values are reported
+as charge_* and userspace converts them with the battery voltage.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/power/supply/qcom_battmgr.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/power/supply/qcom_battmgr.c b/drivers/power/supply/qcom_battmgr.c
+index 7716eb9e1..8e7722fe4 100644
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -9,6 +9,7 @@
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/nvmem-consumer.h>
++#include <linux/of.h>
+ #include <linux/of_device.h>
+ #include <linux/power_supply.h>
+ #include <linux/property.h>
+@@ -320,6 +321,8 @@ struct qcom_battmgr {
+ 	struct power_supply *wls_psy;
+ 
+ 	enum qcom_battmgr_unit unit;
++	/* the firmware reports mAh but says mWh */
++	bool force_mAh;
+ 
+ 	int error;
+ 	struct completion ack;
+@@ -1285,6 +1288,8 @@ static void qcom_battmgr_sc8280xp_callback(struct qcom_battmgr *battmgr,
+ 		}
+ 
+ 		battmgr->unit = le32_to_cpu(resp->info.power_unit);
++		if (battmgr->force_mAh)
++			battmgr->unit = QCOM_BATTMGR_UNIT_mAh;
+ 
+ 		battmgr->info.present = true;
+ 		battmgr->info.design_capacity = le32_to_cpu(resp->info.design_capacity) * 1000;
+@@ -1658,6 +1663,13 @@ static int qcom_battmgr_probe(struct auxiliary_device *adev,
+ 	else
+ 		battmgr->variant = QCOM_BATTMGR_SM8350;
+ 
++	/*
++	 * The HP Googlebook's (Quartz) battery firmware gives the capacities
++	 * in mAh while its power_unit field claims mWh, so a ~70 Wh pack
++	 * would show up as ~9 Wh and time estimates would be ~8x too short.
++	 */
++	battmgr->force_mAh = of_machine_is_compatible("google,quartz");
++
+ 	ret = qcom_battmgr_charge_control_thresholds_init(battmgr);
+ 	if (ret < 0)
+ 		return dev_err_probe(dev, ret,
+-- 
+2.56.0
+

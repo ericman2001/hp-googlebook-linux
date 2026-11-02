@@ -1,7 +1,7 @@
 From 8aa5524cc955699527f9f53f035349945de28a40 Mon Sep 17 00:00:00 2001
 From: ericman2001 <ericman2001@hotmail.com>
 Date: Sun, 18 Oct 2026 11:44:16 -0500
-Subject: [PATCH 19/22] platform/chrome: Add a USB transport for the ChromeOS
+Subject: [PATCH 19/23] platform/chrome: Add a USB transport for the ChromeOS
  EC
 
 Some ChromeOS MCUs take host commands over a vendor USB interface, as

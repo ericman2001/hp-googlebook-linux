@@ -17,10 +17,6 @@ Open items, roughly in order of value.
 
 ## Polish
 
-* **Battery time estimates** are about 8× too short. The battery firmware
-  reports mAh labelled as mWh (`energy_full` 8796000 is 8796 mAh, a ~68 Wh
-  pack). The percentage is right. Fix with a voltage-scaling quirk in
-  `qcom_battmgr`.
 * **Panel quirk table.** Add the Samsung OLED (`SDC 0x4215`) to
   `panel-edp`'s table, so it gets the right timings without the generic
   fallback warning at boot.
